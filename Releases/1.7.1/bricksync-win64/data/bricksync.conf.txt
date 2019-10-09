@@ -1,0 +1,56 @@
+
+// General configuration
+
+// Do we want to automatically check for orders regularly? Otherwise, user has to type "check".
+autocheck = 1;
+
+
+
+// BrickLink configuration
+bricklink.consumerkey = "";
+bricklink.consumersecret = "";
+bricklink.token = "";
+bricklink.tokensecret = "";
+
+// Time in seconds between automated order checks, after a failed query and after a successful one
+bricklink.failinterval = 300;
+bricklink.pollinterval = 600;
+
+
+
+// BrickOwl configuration
+brickowl.key = "";
+
+// Time in seconds between automated order checks, after a failed query and after a successful one
+brickowl.failinterval = 300;
+brickowl.pollinterval = 600;
+
+
+
+// Price Guide configuration
+
+// The path where to store the price guide cache
+// To share the cache, you can put the same directory as the one used by BrickStore/BrickStock
+priceguide.cachepath = "data/pgcache";
+// The format to store the price guide cache, important to share with either BrickStore or BrickStock
+priceguide.cacheformat = "BrickStock";
+// For how many days is the price guide cache good for?
+priceguide.cachetime = 5;
+
+
+
+// Advanced configuration
+
+// Set to non-zero to retain all lots on BrickLink, BrickOwl and tracked inventory
+retainemptylots = 0;
+
+// Set to non-zero to reuse existing and empty BrickOwl lots with matching external_id/LotIDs
+brickowl.reuseempty = 0;
+
+// Set to zero if you don't want to check for new versions of BrickSync or any broadcast message
+checkmessage = 1;
+
+// Maximum count of HTTP queries maintained "in flight" over a same socket
+bricklink.pipelinequeue = 8;
+brickowl.pipelinequeue = 8;
+
