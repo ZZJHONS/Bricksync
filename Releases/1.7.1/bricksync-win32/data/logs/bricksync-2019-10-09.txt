@@ -1,0 +1,15 @@
+
+========== Log Start ~ 2019-10-09 15:28:43 ==========
+
+15:28:43 INIT: Launching BrickSync
+15:28:43 INIT: Version 1.7.1 - Build Date Oct  9 2019 15:26:30
+15:28:43 INIT: Operating System : Windows 8,  (build 9200 ), 64-bit
+15:28:43 INIT: Work directory is "C:\Users\Alexis\Downloads\bricksync-win32".
+15:28:43 INIT: Loading configuration at "data\bricksync.conf.txt".
+15:28:43 ERROR: Configuration variable bricklink.consumerkey is undefined.
+15:28:43 ERROR: Configuration variable bricklink.consumersecret is undefined.
+15:28:43 ERROR: Configuration variable bricklink.token is undefined.
+15:28:43 ERROR: Configuration variable bricklink.tokensecret is undefined.
+15:28:43 ERROR: Configuration variable brickowl.key is undefined.
+
+15:28:43 ERROR: You must edit the configuration file "data\bricksync.conf.txt" before running BrickSync.

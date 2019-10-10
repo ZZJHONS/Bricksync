@@ -1343,11 +1343,13 @@ int main( int argc, char **argv )
     DEBUG_TRACKER_ACTIVITY();
     DEBUG_SET_TRACKER();
 
+#if BS_ENABLE_LIMITS
     if( ( context->contextflags & BS_CONTEXT_FLAGS_AUTOCHECK_MODE ) && ( (context->inventory)->partcount >= BS_LIMITS_MAX_PARTCOUNT ) && !( context->contextflags & BS_CONTEXT_FLAGS_REGISTERED ) )
     {
       ioPrintf( &context->output, 0, BSMSG_WARNING "As your inventory size exceeds " IO_RED "%d" IO_WHITE " parts and BrickSync is " IO_RED "unregistered" IO_WHITE ", " IO_CYAN "autocheck" IO_WHITE " has been disabled.\n" IO_DEFAULT "\n", BS_LIMITS_MAX_PARTCOUNT );
       context->contextflags &= ~BS_CONTEXT_FLAGS_AUTOCHECK_MODE;
     }
+#endif
 
     /* Repack inventory to remove gaps if necessary */
     bsxPackInventory( context->inventory );
