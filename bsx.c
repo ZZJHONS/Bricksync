@@ -854,7 +854,7 @@ int bsxLoadInventory( bsxInventory *inv, char *path )
 
   /* Locate sections */
   ordersection = ccStrFindStrSkip( inv->xmldata, "<Order>" );
-  inventorysection = ccStrFindStrSkip( inv->xmldata, "<Inventory>" );
+  inventorysection = ccStrFindStrSkip( inv->xmldata, "<Inventory" );
 
   /* Cut sections */
   if( !( ccStrFindStr( ordersection, "</Order>" ) ) )
