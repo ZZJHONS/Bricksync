@@ -155,17 +155,18 @@ static void oauthHmacSHA1( unsigned char *data, int datalen, unsigned char *key,
   int i;
   unsigned char k_ipad[OAUTH_SHA1_BLOCK_SIZE];
   unsigned char k_opad[OAUTH_SHA1_BLOCK_SIZE];
-  EVP_MD_CTX mdctx;
   unsigned char hashvalue[EVP_MAX_MD_SIZE];
   unsigned int hashlen;
 
+  EVP_MD_CTX *mdctx;
+  mdctx = EVP_MD_CTX_new();
+
   if( keylen > OAUTH_SHA1_BLOCK_SIZE )
   {
-    EVP_MD_CTX_init( &mdctx );
-    EVP_DigestInit_ex( &mdctx, EVP_sha1(), NULL );
-    EVP_DigestUpdate( &mdctx, key, keylen );
-    EVP_DigestFinal_ex( &mdctx, hashvalue, &hashlen );
-    EVP_MD_CTX_cleanup( &mdctx );
+    EVP_MD_CTX_init( mdctx );
+    EVP_DigestInit_ex( mdctx, EVP_sha1(), NULL );
+    EVP_DigestUpdate( mdctx, key, keylen );
+    EVP_DigestFinal_ex( mdctx, hashvalue, &hashlen );
     key = hashvalue;
     keylen = OAUTH_SHA1_HASH_SIZE;
   }
@@ -179,19 +180,20 @@ static void oauthHmacSHA1( unsigned char *data, int datalen, unsigned char *key,
     k_ipad[i] = 0x36;
     k_opad[i] = 0x5c;
   }
+  
+  EVP_MD_CTX_init( mdctx );
+  EVP_DigestInit( mdctx, EVP_sha1() );
+  EVP_DigestUpdate( mdctx, k_ipad, OAUTH_SHA1_BLOCK_SIZE );
+  EVP_DigestUpdate( mdctx, data, datalen );
+  EVP_DigestFinal_ex( mdctx, hashvalue, &hashlen );
 
-  EVP_MD_CTX_init( &mdctx );
-  EVP_DigestInit( &mdctx, EVP_sha1() );
-  EVP_DigestUpdate( &mdctx, k_ipad, OAUTH_SHA1_BLOCK_SIZE );
-  EVP_DigestUpdate( &mdctx, data, datalen );
-  EVP_DigestFinal_ex( &mdctx, hashvalue, &hashlen );
-  EVP_MD_CTX_cleanup( &mdctx );
-  EVP_MD_CTX_init( &mdctx );
-  EVP_DigestInit( &mdctx, EVP_sha1() );
-  EVP_DigestUpdate( &mdctx, k_opad, OAUTH_SHA1_BLOCK_SIZE );
-  EVP_DigestUpdate( &mdctx, hashvalue, hashlen );
-  EVP_DigestFinal_ex( &mdctx, digest, &hashlen );
-  EVP_MD_CTX_cleanup( &mdctx );
+  EVP_MD_CTX_init( mdctx );
+  EVP_DigestInit( mdctx, EVP_sha1() );
+  EVP_DigestUpdate( mdctx, k_opad, OAUTH_SHA1_BLOCK_SIZE );
+  EVP_DigestUpdate( mdctx, hashvalue, hashlen );
+  EVP_DigestFinal_ex( mdctx, digest, &hashlen );
+
+  EVP_MD_CTX_free( mdctx );
 
   if( retdigestlen )
     *retdigestlen = hashlen;
