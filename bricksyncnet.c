@@ -207,7 +207,8 @@ void bsFlushTcpProcessHttp( bsContext *context )
   httpProcess( context->bricklink.http );
   httpProcess( context->brickowl.http );
   httpProcess( context->bricklink.webhttp );
-  httpProcess( context->bricksyncwebhttp );
+  if( context->checkmessageflag )
+    httpProcess( context->bricksyncwebhttp );
   return;
 }
 
