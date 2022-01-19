@@ -59,10 +59,10 @@ jobs:
         cp bricksync.conf.txt bricksync-win${{ matrix.config.bits }}/data
         cp build-win${{ matrix.config.bits }}/libcrypto-1_1${{ matrix.config.openssl }}.dll bricksync-win${{ matrix.config.bits }}
         cp build-win${{ matrix.config.bits }}/libssl-1_1${{ matrix.config.openssl }}.dll bricksync-win${{ matrix.config.bits }}
-        zip -ur bricksync-win${{ matrix.config.bits }}-1.7.2-${{ github.run_number }}.zip bricksync-win${{ matrix.config.bits }}
+        zip -ur bricksync-win${{ matrix.config.bits }}-1.7.4-${{ github.run_number }}.zip bricksync-win${{ matrix.config.bits }}
       shell: msys2 {0}
       ## shell: cmd
-      ##        tar.exe -acvf bricksync-win${{ matrix.config.bits }}-1.7.2-${{ github.run_number }}.zip bricksync-win${{ matrix.config.bits }}
+      ##        tar.exe -acvf bricksync-win${{ matrix.config.bits }}-1.7.4-${{ github.run_number }}.zip bricksync-win${{ matrix.config.bits }}
       
     - name: Upload on Windows
       uses: actions/upload-artifact@v2
@@ -80,7 +80,7 @@ jobs:
         mkdir -p bricksync-linux64/data
         cp bricksync bricksync-linux64
         cp bricksync.conf.txt bricksync-linux64/data
-        tar -cvzf bricksync-linux64-1.7.2-${{ github.run_number}}.tar.gz bricksync-linux64
+        tar -cvzf bricksync-linux64-1.7.4-${{ github.run_number}}.tar.gz bricksync-linux64
       shell: bash
 
     - name: Upload on Linux

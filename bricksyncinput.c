@@ -960,7 +960,8 @@ static void bsCommandHelp( bsContext *context, int argc, char **argv )
     ioPrintf( &context->output, 0, BSMSG_INFO "Type \"" IO_GREEN "help " IO_CYAN "[topic]" IO_DEFAULT "\" for help on a specific topic.\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO IO_WHITE "General commands:\n" IO_DEFAULT );
-    ioPrintf( &context->output, IO_MODEBIT_NODATE, BSMSG_INFO IO_CYAN "status help check sync verify autocheck about message runfile backup quit prunebackups resetapihistory" IO_DEFAULT "\n" );
+    //ioPrintf( &context->output, IO_MODEBIT_NODATE, BSMSG_INFO IO_CYAN "status help check sync verify autocheck about message runfile backup quit prunebackups resetapihistory" IO_DEFAULT "\n" );
+    ioPrintf( &context->output, IO_MODEBIT_NODATE, BSMSG_INFO IO_CYAN "status help check sync verify autocheck about runfile backup quit prunebackups resetapihistory" IO_DEFAULT "\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO IO_WHITE "Inventory management commands:\n" IO_DEFAULT );
     ioPrintf( &context->output, IO_MODEBIT_NODATE, BSMSG_INFO IO_CYAN "sort blmaster add sub loadprices loadnotes loadmycost loadall merge invblxml invmycost setallremarksfromblid" IO_DEFAULT "\n" );
@@ -1023,6 +1024,7 @@ static void bsCommandHelp( bsContext *context, int argc, char **argv )
     ioPrintf( &context->output, 0, BSMSG_INFO "Command syntax : \"" IO_CYAN "about" IO_DEFAULT "\".\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "The command prints some general information about BrickSync.\n" );
   }
+ /*
   else if( ccStrLowCmpWord( argv[1], "message" ) )
   {
     ioPrintf( &context->output, 0, BSMSG_INFO "Command syntax : \"" IO_CYAN "message " IO_MAGENTA "[update|discard]" IO_DEFAULT "\".\n" );
@@ -1030,6 +1032,7 @@ static void bsCommandHelp( bsContext *context, int argc, char **argv )
     ioPrintf( &context->output, 0, BSMSG_INFO "An argument of \"" IO_GREEN "update" IO_DEFAULT "\" will check for any new broadcast message.\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "An argument of \"" IO_GREEN "discard" IO_DEFAULT "\" will discard an already received message.\n" );
   }
+  */
   else if( ccStrLowCmpWord( argv[1], "runfile" ) )
   {
     ioPrintf( &context->output, 0, BSMSG_INFO "Command syntax : \"" IO_CYAN "runfile pathtofile.txt" IO_DEFAULT "\".\n" );
@@ -3964,8 +3967,10 @@ static int bsRunCommand( bsContext *context, char *input, int runfileflag )
     bsCommandInvMyCost( context, argc, argv );
   else if( ccStrLowCmpWord( argv[0], "about" ) )
     bsCommandAbout( context, argc, argv );
-  else if( ccStrLowCmpWord( argv[0], "message" ) )
+ /* 
+ else if( ccStrLowCmpWord( argv[0], "message" ) )
     bsCommandMessage( context, argc, argv );
+ */ 
   else if( ccStrLowCmpWord( argv[0], "runfile" ) )
   {
     if( !( runfileflag ) )

@@ -260,7 +260,7 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
   context->priceguideflags = BSX_PRICEGUIDE_FLAGS_BRICKSTOCK;
   context->priceguidecachetime = BS_PRICEGUIDE_CACHETIME_DEFAULT;
   context->retainemptylotsflag = 0;
-  context->checkmessageflag = 1;
+  context->checkmessageflag = 0;
   context->curtime = time( 0 );
   context->messagetime = 0;
   context->message = 0;
