@@ -30,9 +30,9 @@ jobs:
           bits: 32
           openssl: ""
 
-        - name: "Ubuntu 18.04 64bit"
+        - name: "Ubuntu 20.04 64bit"
           artifact: "bricksync-linux64"
-          os: ubuntu-18.04
+          os: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
