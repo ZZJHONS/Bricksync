@@ -21,6 +21,7 @@
  * -----------------------------------------------------------------------------
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -70,7 +71,17 @@
 
 
 ////
+void getFetchTimeStamp(char *fetch_timestamp, int time_length)
+{
+    // Set the current date and time for printout in the fetch message
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    size_t ret = strftime(fetch_timestamp, time_length, "%Y-%m-%d %H:%M:%S", tm);
+    // validate pointer to the time value
+    assert(ret);
+    return;
 
+}
 
 static void bsBrickLinkReplyOrderList( void *uservalue, int resultcode, httpResponse *response )
 {
@@ -117,11 +128,14 @@ int bsQueryBickLinkOrderList( bsContext *context, bsOrderList *orderlist, int64_
 {
   bsQueryReply *reply;
   bsTracker tracker;
+  // Set the current date and time for printout in the fetch message
+  char bl_fetch_date_time[64];
+  getFetchTimeStamp(bl_fetch_date_time, 64);
 
   DEBUG_SET_TRACKER();
 
   bsTrackerInit( &tracker, context->bricklink.http );
-  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the BrickLink Order List...\n" );
+  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the BrickLink Order List (" IO_CYAN "%s" IO_DEFAULT ")...\n", bl_fetch_date_time);
   for( ; ; )
   {
     /* Add an OrderList query */
@@ -249,11 +263,14 @@ int bsQueryBickOwlOrderList( bsContext *context, bsOrderList *orderlist, int64_t
   char *querystring;
   bsTracker tracker;
   bsOrder *order;
+  // Set the current date and time for printout in the fetch message
+  char bo_fetch_date_time[64];
+  getFetchTimeStamp(bo_fetch_date_time, 64);
 
   DEBUG_SET_TRACKER();
 
   bsTrackerInit( &tracker, context->brickowl.http );
-  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the BrickOwl Order List...\n" );
+  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the BrickOwl Order List (" IO_CYAN "%s" IO_DEFAULT ")...\n", bo_fetch_date_time);
   for( ; ; )
   {
     /* Add an OrderList query */
