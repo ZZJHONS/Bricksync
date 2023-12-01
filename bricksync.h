@@ -21,13 +21,21 @@
  * -----------------------------------------------------------------------------
  */
 
-#define BS_VERSION_MAJOR (1)
-#define BS_VERSION_MINOR (7)
-#define BS_VERSION_REVISION (4)
-#define BS_VERSION_STRING "1.7.4-231110"
+#define STRINGIFY(X) #X  // Used to build parts of BS_VERSION_STRING_DYNAMIC
+#define BS_VERSION_MAJOR 1
+#define BS_VERSION_MINOR 7
+#define BS_VERSION_REVISION 4
+#if !defined(BS_VERSION_BUILDTIME)
+   // date '+%Y%m%d' (Example: 20230101 - i.e. Jan 01, 2023 build date)
+   // date '+%s' (Example: 1701463345 - seconds from epoch)
+   #define BS_VERSION_BUILDTIME "Specify on commandline at build with -DBS_VERSION_BUILDTIME=`date '+%s'`"
+#endif
+// Release Major.Minor.Revision-<seconds from epoch at compile time>
+#define VERSION_STR(A,B,C,D) STRINGIFY(A) "." STRINGIFY(B) "." STRINGIFY(C) "-" STRINGIFY(D)
+#define BS_VERSION_STRING_DYNAMIC VERSION_STR(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION,BS_VERSION_BUILDTIME)
+#define BS_VERSION_STRING BS_VERSION_STRING_DYNAMIC
 #define BS_VERSION_INTEGER_ENCODE(major,minor,revision) (((major)*10000)|((minor)*100)|((revision)*1))
 #define BS_VERSION_INTEGER BS_VERSION_INTEGER_ENCODE(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION)
-
 
 ////
 
