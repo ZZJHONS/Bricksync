@@ -21,6 +21,7 @@
  * -----------------------------------------------------------------------------
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -871,6 +872,13 @@ void bsCommandStatus( bsContext *context, int argc, char **argv )
   ccGrowth growth;
   char *colorstring;
   float apihistoryratio;
+  // Set the current date and time for printout in the startup message
+  time_t t = time(NULL);
+  struct tm *tm = localtime(&t);
+  char cur_date_time[64];
+  size_t ret = strftime(cur_date_time, sizeof(cur_date_time), "%Y-%m-%d %H:%M:%S", tm);
+  // validate pointer to the time value
+  assert(ret);
 
   if( !( bsCmdArgStdParse( context, argc, argv, 0, 0, 0, &cmdflags, BS_COMMAND_ARGSTD_FLAG_SHORT ) ) )
   {
@@ -883,6 +891,8 @@ void bsCommandStatus( bsContext *context, int argc, char **argv )
   if( !( cmdflags & BS_COMMAND_ARGSTD_FLAG_SHORT ) )
     ioPrintf( &context->output, 0, BSMSG_INFO "BrickSync Status Report.\n" );
   ioPrintf( &context->output, 0, BSMSG_INFO "Software version : " IO_GREEN "%s" IO_DEFAULT " - " IO_GREEN "%s %s" IO_DEFAULT ".\n", BS_VERSION_STRING, __DATE__, __TIME__ );
+  ioPrintf( &context->output, 0, BSMSG_INFO "Software launch time : " IO_CYAN "%s" IO_DEFAULT ".\n", cur_date_time);
+
   if( ( context->storename ) && ( context->username ) )
     ioPrintf( &context->output, 0, BSMSG_INFO "Store name : " IO_GREEN "%s" IO_DEFAULT " by " IO_GREEN "%s" IO_DEFAULT ".\n", context->storename, context->username );
   else if( context->storename )

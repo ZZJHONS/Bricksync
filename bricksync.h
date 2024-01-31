@@ -24,7 +24,8 @@
 #define BS_VERSION_MAJOR (1)
 #define BS_VERSION_MINOR (7)
 #define BS_VERSION_REVISION (4)
-#define BS_VERSION_STRING "1.7.4-231110"
+// Release Major.Minor.Revision-<seconds from epoch for submission>
+#define BS_VERSION_STRING "1.7.4-1701389201"
 #define BS_VERSION_INTEGER_ENCODE(major,minor,revision) (((major)*10000)|((minor)*100)|((revision)*1))
 #define BS_VERSION_INTEGER BS_VERSION_INTEGER_ENCODE(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION)
 
