@@ -26,9 +26,9 @@
 #define BS_VERSION_MINOR 7
 #define BS_VERSION_REVISION 4
 #if !defined(BS_VERSION_BUILDTIME)
-   // date '+%Y%m%d' (Example: 20230101 - i.e. Jan 01, 2023 build date)
-   // date '+%s' (Example: 1701463345 - seconds from epoch)
-   #define BS_VERSION_BUILDTIME "Specify on commandline at build with -DBS_VERSION_BUILDTIME=`date '+%s'`"
+  // date '+%Y%m%d' (Example: 20230101 - i.e. Jan 01, 2023 build date)
+  // date '+%s' (Example: 1701463345 - seconds from epoch)
+  #define BS_VERSION_BUILDTIME "Specify on commandline at build with -DBS_VERSION_BUILDTIME=`date '+%s'`"
 #endif
 // Release Major.Minor.Revision-<seconds from epoch at compile time>
 #define VERSION_STR(A,B,C,D) STRINGIFY(A) "." STRINGIFY(B) "." STRINGIFY(C) "-" STRINGIFY(D)
