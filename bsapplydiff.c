@@ -324,15 +324,15 @@ static void bsBrickLinkApplyDiffUpdate( bsContext *context, bsxItem *item, int i
     if( !( item->flags & BSX_ITEM_XFLAGS_UPDATE_STOCKROOM ) )
       ccGrowthPrintf( &postgrowth, ",\"is_stock_room\":false" );
   }
-  /* In JSON, we need to escape the chars '"' and '\' */
-  if( item->flags & BSX_ITEM_XFLAGS_UPDATE_COMMENTS )
-  {
+  /* In JSON, we need to escape the chars '"' and '\' | After Bricklink made changes on Feb 1st 2024 we need to always update the comment field in API calls even if it is the same as before. */ 
+  // if( item->flags & BSX_ITEM_XFLAGS_UPDATE_COMMENTS )
+  // {
     encodedstring = 0;
     if( item->comments )
       encodedstring = jsonEncodeEscapeString( item->comments, strlen( item->comments ), 0 );
     ccGrowthPrintf( &postgrowth, ",\"description\":\"%s\"", ( encodedstring ? encodedstring : "" ) );
     free( encodedstring );
-  }
+  // }
   if( item->flags & BSX_ITEM_XFLAGS_UPDATE_REMARKS )
   {
     encodedstring = 0;
