@@ -683,6 +683,7 @@ int bsSubmitBrickOwlEditWeight( bsContext *context, bsxItem *item, float itemwei
 
 int bsParseInput( bsContext *context, int *retactionflag );
 
+void bsSetStartupTime();
 void bsCommandStatus( bsContext *context, int argc, char **argv );
 void bsCommandRegister( bsContext *context, int argc, char **argv );
 void bsCommandPruneBackups( bsContext *context, int argc, char **argv );

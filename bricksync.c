@@ -1035,6 +1035,8 @@ int main( int argc, char **argv )
 
   mmInit();
   cpuGetInfo( &cpuinfo );
+  /* Set Startup Time */
+  bsSetStartupTime();
 
 #if ENABLE_DEBUG_TRACKING
   debugTrackerInit( BS_DEBUG_TRACKER_WATCH_MILLISECONDS, BS_DEBUG_TRACKER_STALL_MILLISECONDS );
