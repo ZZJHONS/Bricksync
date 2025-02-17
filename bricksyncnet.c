@@ -385,6 +385,30 @@ int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult
     httpAbortQueue( tracker->http );
     /* Abort */
     ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Too many connection errors, giving up.\n" );
+    
+    /* Resolve IPs again after too many connection errors */
+    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INIT "Resolving IP addresses for API and WEB services.\n" );
+    context->bricklink.apiaddress = tcpResolveName( BS_BRICKLINK_API_SERVER, 0 );
+    if( !( context->bricklink.apiaddress ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKLINK_API_SERVER );
+    else
+      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKLINK_API_SERVER, context->bricklink.apiaddress );
+    context->bricklink.webaddress = tcpResolveName( BS_BRICKLINK_WEB_SERVER, 0 );
+    if( !( context->bricklink.webaddress ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKLINK_WEB_SERVER );
+    else
+      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKLINK_WEB_SERVER, context->bricklink.webaddress );
+    context->brickowl.apiaddress = tcpResolveName( BS_BRICKOWL_API_SERVER, 0 );
+    if( !( context->brickowl.apiaddress ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKOWL_API_SERVER );
+    else
+      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKOWL_API_SERVER, context->brickowl.apiaddress );
+    
+    /* Define HTTP connections to BrickLink and BrickOwl */
+    context->bricklink.http = httpOpen( &context->tcp, context->bricklink.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+    context->bricklink.webhttp = httpOpen( &context->tcp, context->bricklink.webaddress, 80, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING );
+    context->brickowl.http = httpOpen( &context->tcp, context->brickowl.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL ); 
+    
     tracker->failureflag = 1;
   }
 
