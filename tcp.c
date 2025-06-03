@@ -256,7 +256,11 @@ static void tcpEventDebug( tcpContext *context, int line )
     if( link->flags & TCPLINK_FLAGS_EVENT_MASK )
       continue;
     TCP_DEBUG_PRINTF( "TCP ERROR TCP ERROR TCP ERROR AT LINE %d\n", line );
-    sleep( 1 );
+    #if CC_WINDOWS
+    Sleep( 1000 );  // Sleep takes milliseconds
+    #else
+    sleep( 1 );     // sleep takes seconds
+    #endif
   }
   return;
 }
