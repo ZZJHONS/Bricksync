@@ -229,6 +229,11 @@ void bsSyncAddDeltaItem( bsContext *context, bsxInventory *deltainv, bsxItem *st
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_TIERPRICES;
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set TierPrices from [[%d,%.3f],[%d,%.3f],[%d,%.3f]] to [[%d,%.3f],[%d,%.3f],[%d,%.3f]]%s\n", item->tq1, item->tp1, item->tq2, item->tp2, item->tq3, item->tp3, stockitem->tq1, stockitem->tp1, stockitem->tq2, stockitem->tp2, stockitem->tq3, stockitem->tp3, itemstringbuffer );
   }
+  if ( ( deltamode == BS_SYNC_DELTA_MODE_BRICKOWL ) && ( stockitem->sale != item->sale ) )
+  {
+    updateflags |= BSX_ITEM_XFLAGS_UPDATE_SALE_PERCENT;
+    ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set Sale Percent from %d to %d%s\n", item->sale, stockitem->sale, itemstringbuffer );
+  }
 
 
   /* TODO: Remove this once we made sure we are properly importing OwlLotIDs everywhere! */
@@ -257,6 +262,8 @@ void bsSyncAddDeltaItem( bsContext *context, bsxInventory *deltainv, bsxItem *st
   deltaitem->boid = item->boid;
   deltaitem->bolotid = item->bolotid;
   deltaitem->quantity = stockitem->quantity - item->quantity;
+  if (updateflags & BSX_ITEM_XFLAGS_UPDATE_SALE_PERCENT)
+    deltaitem->sale = stockitem->sale;
   deltaitem->flags |= BSX_ITEM_XFLAGS_TO_UPDATE | updateflags;
   /* Increment counters */
   if( deltaitem->quantity > 0 )
@@ -273,7 +280,7 @@ void bsSyncAddDeltaItem( bsContext *context, bsxInventory *deltainv, bsxItem *st
   stats->match_lotcount++;
 
   /* Track updatedata updates */
-  if( updateflags & ( BSX_ITEM_XFLAGS_UPDATE_PRICE | BSX_ITEM_XFLAGS_UPDATE_COMMENTS | BSX_ITEM_XFLAGS_UPDATE_REMARKS | BSX_ITEM_XFLAGS_UPDATE_BULK | BSX_ITEM_XFLAGS_UPDATE_MYCOST | BSX_ITEM_XFLAGS_UPDATE_USEDGRADE | BSX_ITEM_XFLAGS_UPDATE_TIERPRICES ) )
+  if( updateflags & ( BSX_ITEM_XFLAGS_UPDATE_PRICE | BSX_ITEM_XFLAGS_UPDATE_COMMENTS | BSX_ITEM_XFLAGS_UPDATE_REMARKS | BSX_ITEM_XFLAGS_UPDATE_BULK | BSX_ITEM_XFLAGS_UPDATE_MYCOST | BSX_ITEM_XFLAGS_UPDATE_USEDGRADE | BSX_ITEM_XFLAGS_UPDATE_TIERPRICES | BSX_ITEM_XFLAGS_UPDATE_SALE_PERCENT ) )
   {
     stats->updatedata_partcount += stockitem->quantity;
     stats->updatedata_lotcount++;
