@@ -173,6 +173,7 @@ int ccSeqParseDouble( char *seq, int seqlength, double *retdouble );
 
 int ccStrParseHex( char *str, int hexchars );
 
+char *ccStrTrimWhitespace( char *str );
 
 ////
 
