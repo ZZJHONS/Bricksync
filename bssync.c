@@ -213,7 +213,7 @@ void bsSyncAddDeltaItem( bsContext *context, bsxInventory *deltainv, bsxItem *st
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_TIERPRICES;
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set TierPrices from [[%d,%.3f],[%d,%.3f],[%d,%.3f]] to [[%d,%.3f],[%d,%.3f],[%d,%.3f]]%s\n", item->tq1, item->tp1, item->tq2, item->tp2, item->tq3, item->tp3, stockitem->tq1, stockitem->tp1, stockitem->tq2, stockitem->tp2, stockitem->tq3, stockitem->tp3, itemstringbuffer );
   }
-  if ( ( deltamode == BS_SYNC_DELTA_MODE_BRICKOWL ) && ( stockitem->sale != item->sale ) )
+  if ( ( deltamode == BS_SYNC_DELTA_MODE_BRICKOWL ) && ( stockitem->sale != item->sale ) && ( context->syncsalerates ) )
   {
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_SALE_PERCENT;
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set Sale Percent from %d to %d%s\n", item->sale, stockitem->sale, itemstringbuffer );

@@ -47,6 +47,9 @@ retainemptylots = 0;
 // Set to non-zero to reuse existing and empty BrickOwl lots with matching external_id/LotIDs
 brickowl.reuseempty = 0;
 
+// Set to non-zero to sync sales rates from BrickLink to BrickOwl
+syncsalerates = 0;
+
 // Set to zero if you don't want to check for new versions of BrickSync or any broadcast message
 checkmessage = 1;
 
