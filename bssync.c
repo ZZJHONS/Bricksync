@@ -168,11 +168,6 @@ void bsSyncAddDeltaItem( bsContext *context, bsxInventory *deltainv, bsxItem *st
 
   /* Find what needs an update */
   updateflags = 0;
-  char *item_comments_trimmed = NULL;
-  char *stockitem_comments_trimmed = NULL;
-  char *item_remarks_trimmed = NULL;
-  char *stockitem_remarks_trimmed = NULL;
-
   if( item->quantity != stockitem->quantity )
   {
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_QUANTITY;
@@ -188,27 +183,16 @@ void bsSyncAddDeltaItem( bsContext *context, bsxInventory *deltainv, bsxItem *st
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_PRICE;
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set Price from %.3f to %.3f%s\n", item->price, stockitem->price, itemstringbuffer );
   }
-
-  item_comments_trimmed = ccStrTrimWhitespace( item->comments );
-  stockitem_comments_trimmed = ccStrTrimWhitespace( stockitem->comments );
-  if( !( ccStrCmpEqualTest( item_comments_trimmed, stockitem_comments_trimmed ) ) )
+  if( !( ccStrCmpEqualTest( item->comments, stockitem->comments ) ) )
   {
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_COMMENTS;
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set Comments from \"%s\" to \"%s\"%s\n", item->comments, stockitem->comments, itemstringbuffer );
   }
-  free( item_comments_trimmed );
-  free( stockitem_comments_trimmed );
-
-  item_remarks_trimmed = ccStrTrimWhitespace( item->remarks );
-  stockitem_remarks_trimmed = ccStrTrimWhitespace( stockitem->remarks );
-  if( !( ccStrCmpEqualTest( item_remarks_trimmed, stockitem_remarks_trimmed ) ) )
+  if( !( ccStrCmpEqualTest( item->remarks, stockitem->remarks ) ) )
   {
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_REMARKS;
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set Remarks from \"%s\" to \"%s\"%s\n", item->remarks, stockitem->remarks, itemstringbuffer );
   }
-  free( item_remarks_trimmed );
-  free( stockitem_remarks_trimmed );
-
   if( ( item->bulk != stockitem->bulk ) && ( ( item->bulk >= 2 ) || ( stockitem->bulk >= 2 ) ) )
   {
     updateflags |= BSX_ITEM_XFLAGS_UPDATE_BULK;
@@ -473,10 +457,6 @@ int bsMergeInv( bsContext *context, bsxInventory *inv, bsMergeInvStats *stats, i
   bsxItem *item, *stockitem, *deltaitem;
   bsxInventory *stockinv;
   char itemstringbuffer[512];
-  char *item_comments_trimmed = NULL;
-  char *stockitem_comments_trimmed = NULL;
-  char *item_remarks_trimmed = NULL;
-  char *stockitem_remarks_trimmed = NULL;
 
   DEBUG_SET_TRACKER();
 
@@ -631,10 +611,6 @@ int bsMergeLoad( bsContext *context, bsxInventory *inv, bsMergeUpdateStats *stat
   bsxItem *item, *stockitem, *deltaitem;
   bsxInventory *stockinv;
   char itemstringbuffer[512];
-  char *item_comments_trimmed = NULL;
-  char *stockitem_comments_trimmed = NULL;
-  char *item_remarks_trimmed = NULL;
-  char *stockitem_remarks_trimmed = NULL;
 
   DEBUG_SET_TRACKER();
 
@@ -669,27 +645,16 @@ int bsMergeLoad( bsContext *context, bsxInventory *inv, bsMergeUpdateStats *stat
       updateflags |= BSX_ITEM_XFLAGS_UPDATE_PRICE;
       ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set price from %.3f to %.3f for item%s\n", stockitem->price, item->price, itemstringbuffer );
     }
-    
-    item_comments_trimmed = ccStrTrimWhitespace( item->comments );
-    stockitem_comments_trimmed = ccStrTrimWhitespace( stockitem->comments );
-    if( ( mergeflags & BS_MERGE_FLAGS_COMMENTS ) && !( ccStrCmpEqualTest( item_comments_trimmed, stockitem_comments_trimmed ) ) )
+    if( ( mergeflags & BS_MERGE_FLAGS_COMMENTS ) && !( ccStrCmpEqualTest( item->comments, stockitem->comments ) ) )
     {
       updateflags |= BSX_ITEM_XFLAGS_UPDATE_COMMENTS;
       ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set comments from \"%s\" to \"%s\"%s\n", stockitem->comments, item->comments, itemstringbuffer );
     }
-    free( item_comments_trimmed );
-    free( stockitem_comments_trimmed );
-
-    item_remarks_trimmed = ccStrTrimWhitespace( item->remarks );
-    stockitem_remarks_trimmed = ccStrTrimWhitespace( stockitem->remarks );
-    if( ( mergeflags & BS_MERGE_FLAGS_REMARKS ) && !( ccStrCmpEqualTest( item_remarks_trimmed, stockitem_remarks_trimmed ) ) )
+    if( ( mergeflags & BS_MERGE_FLAGS_REMARKS ) && !( ccStrCmpEqualTest( item->remarks, stockitem->remarks ) ) )
     {
       updateflags |= BSX_ITEM_XFLAGS_UPDATE_REMARKS;
       ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_NODATE, "LOG: Set remarks from \"%s\" to \"%s\"%s\n", stockitem->remarks, item->remarks, itemstringbuffer );
     }
-    free( item_remarks_trimmed );
-    free( stockitem_remarks_trimmed );
-
     if( ( mergeflags & BS_MERGE_FLAGS_BULK ) && ( item->bulk != stockitem->bulk ) && ( ( item->bulk >= 2 ) || ( stockitem->bulk >= 2 ) ) )
     {
       updateflags |= BSX_ITEM_XFLAGS_UPDATE_BULK;

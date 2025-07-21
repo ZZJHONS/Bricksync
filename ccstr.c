@@ -44,6 +44,7 @@
 
 char *ccStrTrimWhitespace( char *str )
 {
+  char *start = str;
   char *end;
   char *new_str;
   size_t len;
@@ -52,26 +53,24 @@ char *ccStrTrimWhitespace( char *str )
     return NULL;
 
   // Trim leading space
-  while( isspace( (unsigned char)*str ) )
-    str++;
+  while( isspace( (unsigned char)*start ) )
+    start++;
 
-  if( *str == 0 )  // All spaces?
-    return ccStrDup( str );
+  if( *start == 0 )  // All spaces?
+    return ccStrDup( start );
 
   // Trim trailing space
-  end = str + strlen(str) - 1;
-  while( end > str && isspace( (unsigned char)*end ) )
+  end = start + strlen(start) - 1;
+  while( end > start && isspace( (unsigned char)*end ) )
     end--;
 
-  // Write new null terminator character
-  *(end+1) = 0;
-
-  len = (end - str) + 1;
+  // Allocate and copy the trimmed string
+  len = (end - start) + 1;
   new_str = (char *)malloc( len + 1 );
   if( new_str == NULL )
     return NULL; // Allocation failed
 
-  memcpy( new_str, str, len );
+  memcpy( new_str, start, len );
   new_str[len] = 0;
 
   return new_str;
@@ -834,9 +833,9 @@ char *ccStrDup( const char *str )
   if( !( str ) )
     return 0;
   len = strlen( str );
-  if( !( len ) )
-    return 0;
   newstr = malloc( ( len + 1 ) * sizeof(char) );
+  if( !newstr )
+    return 0;
   memcpy( newstr, str, len + 1 );
   return newstr;
 }
