@@ -65,7 +65,7 @@ jobs:
       ##        tar.exe -acvf bricksync-win${{ matrix.config.bits }}-1.7.4-${{ github.run_number }}.zip bricksync-win${{ matrix.config.bits }}
       
     - name: Upload on Windows
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       if: startsWith(matrix.config.os, 'windows')
       with:
         name: ${{ matrix.config.artifact }}
@@ -84,7 +84,7 @@ jobs:
       shell: bash
 
     - name: Upload on Linux
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       if: startsWith(matrix.config.os, 'ubuntu')
       with:
         name: ${{ matrix.config.artifact }}

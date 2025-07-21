@@ -48,6 +48,7 @@
  #include <windows.h>
  #include <sys/types.h>
  #include <sys/stat.h>
+ #include <direct.h>  // This ensures _mkdir is correctly recognized on Windows platforms.
 #else
  #error Unknown/Unsupported platform!
 #endif
