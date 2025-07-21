@@ -2326,13 +2326,17 @@ void bsxSetItemColorName( bsxItem *item, char *colorname, int len )
 
 void bsxSetItemComments( bsxItem *item, char *comments, int len )
 {
-  bsxSetItemString( item, offsetof(bsxItem,comments), comments, len, BSX_ITEM_FLAGS_ALLOC_COMMENTS );
+  char *trimmed_comments = ccStrTrimWhitespace(comments);
+  bsxSetItemString( item, offsetof(bsxItem,comments), trimmed_comments, -1, BSX_ITEM_FLAGS_ALLOC_COMMENTS );
+  free(trimmed_comments);
   return;
 }
 
 void bsxSetItemRemarks( bsxItem *item, char *remarks, int len )
 {
-  bsxSetItemString( item, offsetof(bsxItem,remarks), remarks, len, BSX_ITEM_FLAGS_ALLOC_REMARKS );
+  char *trimmed_remarks = ccStrTrimWhitespace(remarks);
+  bsxSetItemString( item, offsetof(bsxItem,remarks), trimmed_remarks, -1, BSX_ITEM_FLAGS_ALLOC_REMARKS );
+  free(trimmed_remarks);
   return;
 }
 

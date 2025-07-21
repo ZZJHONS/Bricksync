@@ -455,6 +455,12 @@ static int bsConfParse( bsContext *context, bsConfParser *parser )
           goto error;
         context->retainemptylotsflag = (int)readint;
       }
+      else if( ccStrMatchSeq( "syncsalerates", tokenstring, token->length ) )
+      {
+        if( !( bsConfReadInteger( context, parser, &readint ) ) )
+          goto error;
+        context->syncsalerates = (int)readint;
+      }
       else if( ccStrMatchSeq( "checkmessage", tokenstring, token->length ) )
       {
         if( !( bsConfReadInteger( context, parser, &readint ) ) )
