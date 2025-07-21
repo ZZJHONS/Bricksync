@@ -1117,6 +1117,9 @@ static int blParseOrderEntryValue( jsonParser *parser, jsonToken *token, bsOrder
       readint = BL_ORDER_STATUS_NSS;
     else if( ccStrCmpSeq( "OCR", valuestring, valuetoken->length ) )
       readint = BL_ORDER_STATUS_OCR;
+    /* New BrickLink status Paid-Pending for orders with payment not cleared on PayPal, treated as a pending order. */
+    else if( ccStrCmpSeq( "PAID-PENDING", valuestring, valuetoken->length ) )
+      readint = BL_ORDER_STATUS_PENDING;
     else
     {
       ioPrintf( parser->log, 0, "BL JSON PARSER: Error, unknown order status \"%.*s\", offset %d\n", (int)valuetoken->length, valuestring, (parser->token)->offset );
