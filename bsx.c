@@ -261,20 +261,20 @@ char *xmlDecodeEscapeString( char *string, int length, int *retlength )
         *dst++ = '>';
         skip = 3;
       }
-      else if( ccStrCmpSeq( string, "quot;", 4 ) )
+      else if( ccStrCmpSeq( string, "quot;", 5 ) )
       {
         *dst++ = '"';
-        skip = 4;
+        skip = 5;
       }
       else if( ccStrCmpSeq( string, "amp;", 4 ) )
       {
         *dst++ = '&';
         skip = 4;
       }
-      else if( ccStrCmpSeq( string, "apos;", 4 ) )
+      else if( ccStrCmpSeq( string, "apos;", 5 ) )
       {
         *dst++ = '\'';
-        skip = 4;
+        skip = 5;
       }
       else
       {
