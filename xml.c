@@ -144,6 +144,14 @@ int xmlStrParseFloat( char *str, float *retfloat )
 ////
 
 
+/* Concatenate suffix to string, and move string pointer to after suffix */
+void xmlAppendSuffix( char *suffix, char **string )
+{
+  for ( ; *suffix ; suffix++ )
+  {
+    *(*string)++ = *suffix;
+  }
+}
 
 /* Build string with escape chars as required, returned string must be free()'d */
 char *xmlEncodeEscapeString( char *string, int length, int *retlength )
@@ -155,50 +163,26 @@ char *xmlEncodeEscapeString( char *string, int length, int *retlength )
   for( dst = dstbase ; length ; length--, string++ )
   {
     c = *string;
+    /* Encode predefined entities */
     if( c == '&' )
     {
-      dst[0] = '&';
-      dst[1] = 'a';
-      dst[2] = 'm';
-      dst[3] = 'p';
-      dst[4] = ';';
-      dst += 5;
+      xmlAppendSuffix("&amp;", &dst);
     }
     else if( c == '<' )
     {
-      dst[0] = '&';
-      dst[1] = 'l';
-      dst[2] = 't';
-      dst[3] = ';';
-      dst += 4;
+      xmlAppendSuffix("&lt;", &dst);
     }
     else if( c == '>' )
     {
-      dst[0] = '&';
-      dst[1] = 'g';
-      dst[2] = 't';
-      dst[3] = ';';
-      dst += 4;
+      xmlAppendSuffix("&gt;", &dst);
     }
     else if( c == '"' )
     {
-      dst[0] = '&';
-      dst[1] = 'q';
-      dst[2] = 'u';
-      dst[3] = 'o';
-      dst[4] = 't';
-      dst[5] = ';';
-      dst += 6;
+      xmlAppendSuffix("&quot;", &dst);
     }
     else if( c == '\'' )
     {
-      dst[0] = '&';
-      dst[1] = 'a';
-      dst[2] = 'p';
-      dst[3] = 'o';
-      dst[4] = 's';
-      dst[5] = ';';
-      dst += 6;
+      xmlAppendSuffix("&apos;", &dst);
     }
     else
       *dst++ = c;
@@ -210,6 +194,21 @@ char *xmlEncodeEscapeString( char *string, int length, int *retlength )
   return dstbase;
 }
 
+
+/* Check if the prefix matches the given string; otherwise, return 0.
+ * If the prefix matches, save the replacement character to the output string before inrementing.
+ * Finally, output the number of characters matched from the input string. */
+int xmlReplacePrefix( char *string, char *prefix, char replacement, char **output, int *skip)
+{
+  if ( ccStrCmpSeq( string, prefix, strlen(prefix) ) )
+  {
+    *(*output)++ = replacement;
+    *skip = strlen(prefix);
+    return 1;
+  }
+
+  return 0;
+}
 
 /* Build string with decoded escape chars, returned string must be free()'d */
 char *xmlDecodeEscapeString( char *string, int length, int *retlength )
@@ -230,31 +229,12 @@ char *xmlDecodeEscapeString( char *string, int length, int *retlength )
       if( !( --length ) )
         goto error;
       string++;
-      if( ccStrCmpSeq( string, "lt;", 3 ) )
-      {
-        *dst++ = '<';
-        skip = 3;
-      }
-      else if( ccStrCmpSeq( string, "gt;", 3 ) )
-      {
-        *dst++ = '>';
-        skip = 3;
-      }
-      else if( ccStrCmpSeq( string, "quot;", 5 ) )
-      {
-        *dst++ = '"';
-        skip = 5;
-      }
-      else if( ccStrCmpSeq( string, "amp;", 4 ) )
-      {
-        *dst++ = '&';
-        skip = 4;
-      }
-      else if( ccStrCmpSeq( string, "apos;", 5 ) )
-      {
-        *dst++ = '\'';
-        skip = 5;
-      }
+      /* Decode predefined entities */
+      if( xmlReplacePrefix( string, "lt;", '<', &dst, &skip ) ) { }
+      else if( xmlReplacePrefix( string, "gt;", '>', &dst, &skip ) ) { }
+      else if( xmlReplacePrefix( string, "quot;", '"', &dst, &skip ) ) { }
+      else if( xmlReplacePrefix( string, "amp;", '&', &dst, &skip ) ) { }
+      else if( xmlReplacePrefix( string, "apos;", '\'', &dst, &skip ) ) { }
       else
       {
         *dst++ = '&';
