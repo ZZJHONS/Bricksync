@@ -235,6 +235,10 @@ char *xmlDecodeEscapeString( char *string, int length, int *retlength )
       else if( xmlReplacePrefix( string, "quot;", '"', &dst, &skip ) ) { }
       else if( xmlReplacePrefix( string, "amp;", '&', &dst, &skip ) ) { }
       else if( xmlReplacePrefix( string, "apos;", '\'', &dst, &skip ) ) { }
+      /* Also decode numeric entities */
+      else if( xmlReplacePrefix( string, "#039;", '\'', &dst, &skip ) ) { }
+      else if( xmlReplacePrefix( string, "#40;", '(', &dst, &skip ) ) { }
+      else if( xmlReplacePrefix( string, "#41;", ')', &dst, &skip ) ) { }
       else
       {
         *dst++ = '&';
