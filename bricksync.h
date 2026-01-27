@@ -307,6 +307,7 @@ typedef struct
 
   /* User options */
   int retainemptylotsflag;
+  int syncsalerates;
   int checkmessageflag;
 
 #if BS_ENABLE_LIMITS
