@@ -56,7 +56,7 @@ typedef struct
   float tierprice[3];
 } boItem;
 
-#define BO_COLOR_TABLE_RANGE (256)
+#define BO_COLOR_TABLE_RANGE (512)
 
 typedef struct
 {
