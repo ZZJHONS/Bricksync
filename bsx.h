@@ -21,15 +21,6 @@
  * -----------------------------------------------------------------------------
  */
 
-/* Build string with escape chars as required, returned string must be free()'d */
-char *xmlEncodeEscapeString( char *string, int length, int *retlength );
-/* Build string with decoded escape chars, returned string must be free()'d */
-char *xmlDecodeEscapeString( char *string, int length, int *retlength );
-
-
-////
-
-
 typedef struct
 {
   /* ItemID (string) */
