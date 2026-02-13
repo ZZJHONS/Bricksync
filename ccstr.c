@@ -34,6 +34,7 @@
 #include <time.h>
 #include <errno.h>
 #include <assert.h>
+#include <ctype.h>
 
 #include "cc.h"
 #include "ccstr.h"
@@ -41,7 +42,39 @@
 
 ////
 
+char *ccStrTrimWhitespace( char *str )
+{
+  char *start = str;
+  char *end;
+  char *new_str;
+  size_t len;
 
+  if( str == NULL )
+    return NULL;
+
+  // Trim leading space
+  while( isspace( (unsigned char)*start ) )
+    start++;
+
+  if( *start == 0 )  // All spaces?
+    return ccStrDup( start );
+
+  // Trim trailing space
+  end = start + strlen(start) - 1;
+  while( end > start && isspace( (unsigned char)*end ) )
+    end--;
+
+  // Allocate and copy the trimmed string
+  len = (end - start) + 1;
+  new_str = (char *)malloc( len + 1 );
+  if( new_str == NULL )
+    return NULL; // Allocation failed
+
+  memcpy( new_str, start, len );
+  new_str[len] = 0;
+
+  return new_str;
+}
 #define CC_CHAR_IS_CONTROL(c) ((c)<' ')
 #define CC_CHAR_IS_DELIMITER(c) ((c)<=' ')
 
@@ -800,9 +833,9 @@ char *ccStrDup( const char *str )
   if( !( str ) )
     return 0;
   len = strlen( str );
-  if( !( len ) )
-    return 0;
   newstr = malloc( ( len + 1 ) * sizeof(char) );
+  if( !newstr )
+    return 0;
   memcpy( newstr, str, len + 1 );
   return newstr;
 }
