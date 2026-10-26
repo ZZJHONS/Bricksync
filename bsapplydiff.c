@@ -754,7 +754,7 @@ static void bsBrickOwlApplyDiffCreate( bsContext *context, bsxItem *item, int it
     }
   }
   ccGrowthPrintf( &postgrowth, "&condition=%s", conditionstring );
-  querystring = ccStrAllocPrintf( "POST /v1/inventory/create HTTP/1.1\r\nHost: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)postgrowth.offset, postgrowth.data );
+  querystring = ccStrAllocPrintf( "POST /v1/inventory/create HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)postgrowth.offset, postgrowth.data );
   reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, itemindex, (void *)item, (void *)&item->bolotid );
   bsBrickOwlAddQuery( context, querystring, 0, (void *)reply, bsBrickOwlReplyCreate );
   free( querystring );
@@ -780,7 +780,7 @@ static void bsBrickOwlApplyDiffDelete( bsContext *context, bsxItem *item, int it
     poststring = ccStrAllocPrintf( "key=%s&lot_id="CC_LLD"&absolute_quantity=0", context->brickowl.key, (long long)item->bolotid );
   else
     poststring = ccStrAllocPrintf( "key=%s&external_id="CC_LLD"&absolute_quantity=0", context->brickowl.key, (long long)item->lotid );
-  querystring = ccStrAllocPrintf( "POST /v1/inventory/update HTTP/1.1\r\nHost: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)strlen(poststring), poststring );
+  querystring = ccStrAllocPrintf( "POST /v1/inventory/update HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)strlen(poststring), poststring );
   reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, itemindex, (void *)item, 0 );
   bsBrickOwlAddQuery( context, querystring, 0, (void *)reply, bsBrickOwlReplyUpdate );
   free( querystring );
@@ -861,7 +861,7 @@ static void bsBrickOwlApplyDiffUpdate( bsContext *context, bsxItem *item, int it
       ccGrowthPrintf( &postgrowth, "&tier_price=remove" );
   }
 
-  querystring = ccStrAllocPrintf( "POST /v1/inventory/update HTTP/1.1\r\nHost: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)postgrowth.offset, postgrowth.data );
+  querystring = ccStrAllocPrintf( "POST /v1/inventory/update HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)postgrowth.offset, postgrowth.data );
   reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, itemindex, (void *)item, 0 );
   bsBrickOwlAddQuery( context, querystring, 0, (void *)reply, bsBrickOwlReplyUpdate );
   free( querystring );

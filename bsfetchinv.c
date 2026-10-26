@@ -278,7 +278,7 @@ bsxInventory *bsQueryBrickOwlInventory( bsContext *context )
   {
     ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the BrickOwl Inventory...\n" );
     /* Add an Inventory query */
-    querystring = ccStrAllocPrintf( "GET /v1/inventory/list?key=%s%s HTTP/1.1\r\nHost: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, ( context->brickowl.reuseemptyflag ? "&active_only=0" : "" ) );
+    querystring = ccStrAllocPrintf( "GET /v1/inventory/list?key=%s%s HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, ( context->brickowl.reuseemptyflag ? "&active_only=0" : "" ) );
     reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, 0, 0, (void *)inv );
     bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY, (void *)reply, bsBrickOwlReplyInventory );
     free( querystring );

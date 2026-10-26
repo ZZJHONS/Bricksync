@@ -209,7 +209,7 @@ static int bsQueueBrickOwlLookupBoid( bsContext *context, bsWorkList *worklist, 
     /* There's some stuff we can't query, like books or custom lots, leave them a boid of -1 */
     if( itemtypestring )
     {
-      querystring = ccStrAllocPrintf( "GET /v1/catalog/id_lookup?key=%s&id=%s&type=%s&id_type=bl_item_no HTTP/1.1\r\nHost: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, item->id, itemtypestring );
+      querystring = ccStrAllocPrintf( "GET /v1/catalog/id_lookup?key=%s&id=%s&type=%s&id_type=bl_item_no HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, item->id, itemtypestring );
       reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, itemindex, (void *)item, (void *)&item->boid );
       bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY | HTTP_QUERY_FLAGS_PIPELINING, (void *)reply, bsBrickOwlReplyLookup );
       free( querystring );

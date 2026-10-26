@@ -36,6 +36,11 @@
 #define BS_VERSION_STRING BS_VERSION_STRING_DYNAMIC
 #define BS_VERSION_INTEGER_ENCODE(major,minor,revision) (((major)*10000)|((minor)*100)|((revision)*1))
 #define BS_VERSION_INTEGER BS_VERSION_INTEGER_ENCODE(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION)
+// What every API request says it is: "BrickSync/1.7.4" (Brick Owl's API terms ask clients to identify
+// themselves, and without it BrickSync could only be told apart by its TLS fingerprint).
+#define BS_UA_STR(A,B,C) "BrickSync/" STRINGIFY(A) "." STRINGIFY(B) "." STRINGIFY(C)
+#define BS_USER_AGENT BS_UA_STR(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION)
+#define BS_USER_AGENT_HEADER "User-Agent: " BS_USER_AGENT "\r\n"
 
 ////
 

@@ -274,7 +274,7 @@ int bsQueryBickOwlOrderList( bsContext *context, bsOrderList *orderlist, int64_t
   for( ; ; )
   {
     /* Add an OrderList query */
-    querystring = ccStrAllocPrintf( "GET /v1/order/list?key=%s&order_time=%lld&limit=%d&list_type=store HTTP/1.1\r\nHost: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, (long long)minimumorderdate, BS_FETCH_BRICKOWL_ORDERLIST_MAXIMUM );
+    querystring = ccStrAllocPrintf( "GET /v1/order/list?key=%s&order_time=%lld&limit=%d&list_type=store HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, (long long)minimumorderdate, BS_FETCH_BRICKOWL_ORDERLIST_MAXIMUM );
     reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, 0, 0, (void *)orderlist );
     bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY, (void *)reply, bsBrickOwlReplyOrderList );
     free( querystring );
@@ -316,7 +316,7 @@ int bsQueryUpgradeBickOwlOrderList( bsContext *context, bsOrderList *orderlist, 
       order = &orderlist->orderarray[ orderindex ];
       ioPrintf( &context->output, IO_MODEBIT_LOGONLY | IO_MODEBIT_FLUSH, "LOG: Fetching details for BrickOwl order #" CC_LLD ".\n", (long long)order->id );
       /* Add an OrderView query */
-      querystring = ccStrAllocPrintf( "GET /v1/order/view?key=%s&order_id=" CC_LLD " HTTP/1.1\r\nHost: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, (long long)order->id );
+      querystring = ccStrAllocPrintf( "GET /v1/order/view?key=%s&order_id=" CC_LLD " HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, (long long)order->id );
       reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, 0, 0, (void *)order );
       bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY, (void *)reply, bsBrickOwlReplyOrderView );
       free( querystring );

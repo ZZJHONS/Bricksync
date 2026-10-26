@@ -277,7 +277,7 @@ void bsFetchBrickSyncMessage( bsContext *context )
 
   ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the latest BrickSync broadcast message...\n" );
 
-  querystring = ccStrAllocPrintf( "GET /bsmessage HTTP/1.1\r\nHost: " BS_BRICKSYNC_WEB_SERVER "\r\nConnection: Close\r\n\r\n" );
+  querystring = ccStrAllocPrintf( "GET /bsmessage HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: " BS_BRICKSYNC_WEB_SERVER "\r\nConnection: Close\r\n\r\n" );
   httpAddQuery( context->bricksyncwebhttp, querystring, strlen( querystring ), HTTP_QUERY_FLAGS_RETRY, (void *)context, bsBrickSyncReplyMessage );
   free( querystring );
 

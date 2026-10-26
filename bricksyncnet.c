@@ -162,7 +162,7 @@ void bsBrickLinkAddQuery( bsContext *context, char *methodstring, char *pathstri
   ccGrowthPrintf( &growth, "%s %s", methodstring, pathstring );
   if( paramstring )
     ccGrowthPrintf( &growth, "?%s", paramstring );
-  ccGrowthPrintf( &growth, " HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n%s\r\n", BS_BRICKLINK_API_SERVER, oauthstring );
+  ccGrowthPrintf( &growth, " HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: %s\r\nConnection: Keep-Alive\r\n%s\r\n", BS_BRICKLINK_API_SERVER, oauthstring );
   if( bodystring )
     ccGrowthPrintf( &growth, "Content-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", (int)strlen( bodystring ), bodystring );
   else
@@ -507,7 +507,7 @@ int bsQueryBrickOwlUserDetails( bsContext *context, boUserDetails *userdetails )
   {
     ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INIT "Fetching BrickOwl user information...\n" );
     /* Add an userdetails query */
-    querystring = ccStrAllocPrintf( "GET /v1/token/details?key=%s HTTP/1.1\r\nHost: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key );
+    querystring = ccStrAllocPrintf( "GET /v1/token/details?key=%s HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key );
     reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, 0, 0, (void *)userdetails );
     bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY, (void *)reply, bsBrickOwlReplyUserDetails );
     free( querystring );
