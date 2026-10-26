@@ -28,7 +28,9 @@
 #if !defined(BS_VERSION_BUILDTIME)
   // date '+%Y%m%d' (Example: 20230101 - i.e. Jan 01, 2023 build date)
   // date '+%s' (Example: 1701463345 - seconds from epoch)
-  #define BS_VERSION_BUILDTIME // "Specify on commandline at build with -DBS_VERSION_BUILDTIME=`date '+%s'`"
+  // A build without a stamp (hand-compiled) reads "1.7.4-dev"; the GitHub Actions build passes
+  // -DBS_VERSION_BUILDTIME=<YYYYMMDD>.<run number>, e.g. 20261026.50 (.github/workflows/build_qmake.yml).
+  #define BS_VERSION_BUILDTIME dev
 #endif
 // Release Major.Minor.Revision-<seconds from epoch at compile time>
 #define VERSION_STR(A,B,C,D) STRINGIFY(A) "." STRINGIFY(B) "." STRINGIFY(C) "-" STRINGIFY(D)
@@ -36,10 +38,10 @@
 #define BS_VERSION_STRING BS_VERSION_STRING_DYNAMIC
 #define BS_VERSION_INTEGER_ENCODE(major,minor,revision) (((major)*10000)|((minor)*100)|((revision)*1))
 #define BS_VERSION_INTEGER BS_VERSION_INTEGER_ENCODE(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION)
-// What every API request says it is: "BrickSync/1.7.4" (Brick Owl's API terms ask clients to identify
-// themselves, and without it BrickSync could only be told apart by its TLS fingerprint).
-#define BS_UA_STR(A,B,C) "BrickSync/" STRINGIFY(A) "." STRINGIFY(B) "." STRINGIFY(C)
-#define BS_USER_AGENT BS_UA_STR(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION)
+// What every API request says it is: "BrickSync/1.7.4-20261026.50" (Brick Owl's API terms ask clients
+// to identify themselves, and without it BrickSync could only be told apart by its TLS fingerprint).
+// The build stamp is part of it so each release can be told apart in the marketplaces' logs.
+#define BS_USER_AGENT "BrickSync/" BS_VERSION_STRING
 #define BS_USER_AGENT_HEADER "User-Agent: " BS_USER_AGENT "\r\n"
 
 ////
