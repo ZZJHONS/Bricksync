@@ -34,6 +34,8 @@ struct httpConnection
   tcpLink *link;
   char *address;
   int port;
+  /* Host name announced in the TLS handshake (SNI), NULL for none */
+  char *sslhostname;
   int keepalivemax;
   /* Connection timeouts */
   int idletimeout;
@@ -95,6 +97,9 @@ httpConnection *httpOpen( tcpContext *tcp, char *address, int port, int flags );
 
 /* Close HTTP connection */
 void httpClose( httpConnection *http );
+
+/* Set the host name sent as TLS SNI on every (re)connect; call right after httpOpen() */
+void httpSetSSLHostName( httpConnection *http, char *hostname );
 
 /* Set timeouts for connection in milliseconds */
 void httpSetTimeout( httpConnection *http, int idletimeout, int waitingtimeout );

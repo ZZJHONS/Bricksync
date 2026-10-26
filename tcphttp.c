@@ -337,6 +337,7 @@ httpConnection *httpOpen( tcpContext *tcp, char *address, int port, int flags )
   http->address = malloc( strlen( address ) + 1 );
   strcpy( http->address, address );
   http->port = port;
+  http->sslhostname = 0;
   http->keepalivemax = 1;
   http->idletimeout = HTTP_TIMEOUT_IDLE;
   http->waitingtimeout = HTTP_TIMEOUT_WAITING;
@@ -508,7 +509,21 @@ void httpClose( httpConnection *http )
   httpCloseLink( http );
 
   free( http->address );
+  free( http->sslhostname );
   free( http );
+  return;
+}
+
+
+void httpSetSSLHostName( httpConnection *http, char *hostname )
+{
+  free( http->sslhostname );
+  http->sslhostname = 0;
+  if( hostname )
+  {
+    http->sslhostname = malloc( strlen( hostname ) + 1 );
+    strcpy( http->sslhostname, hostname );
+  }
   return;
 }
 
@@ -1187,7 +1202,7 @@ static int httpAttemptConnect( httpConnection *http )
     goto connecterror;
 
   /* Reconnect */
-  http->link = tcpConnect( http->tcp, http->address, http->port, http, &httpConnectionIO, http->flags & HTTP_CONNECTION_FLAGS_SSL );
+  http->link = tcpConnectSSLHost( http->tcp, http->address, http->port, http, &httpConnectionIO, http->flags & HTTP_CONNECTION_FLAGS_SSL, http->sslhostname );
   if( http->link )
   {
     http->status = HTTP_CONNECTION_STATUS_CONNECTING;

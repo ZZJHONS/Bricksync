@@ -734,6 +734,15 @@ static tcpBuffer *tcpAddRecvBuffer( tcpContext *context, tcpLink *link )
 
 tcpLink *tcpConnect( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag )
 {
+  return tcpConnectSSLHost( context, address, port, uservalue, netio, sslflag, 0 );
+}
+
+
+/* The address is usually an already resolved IP; sslhostname is the server name the TLS handshake
+ * must announce (SNI). Edges that host many names on one IP, such as Cloudflare in front of
+ * api.brickowl.com, refuse a handshake that names no server, so every HTTPS link must pass it. */
+tcpLink *tcpConnectSSLHost( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag, const char *sslhostname )
+{
   int sockflag;
   in_addr_t ip;
   tcpLink *link;
@@ -836,6 +845,8 @@ tcpLink *tcpConnect( tcpContext *context, char *address, int port, void *userval
     if( !( link->sslconnection ) )
       goto error;
     SSL_set_fd( link->sslconnection, link->socket );
+    if( sslhostname )
+      SSL_set_tlsext_host_name( link->sslconnection, sslhostname );
     link->flags |= TCPLINK_FLAGS_SSL_NEEDCONNECT;
   }
 #endif

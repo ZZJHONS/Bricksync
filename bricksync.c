@@ -454,8 +454,10 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
 
   /* Define HTTP connections to BrickLink and BrickOwl */
   context->bricklink.http = httpOpen( &context->tcp, context->bricklink.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+  httpSetSSLHostName( context->bricklink.http, BS_BRICKLINK_API_SERVER );
   context->bricklink.webhttp = httpOpen( &context->tcp, context->bricklink.webaddress, 80, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING );
   context->brickowl.http = httpOpen( &context->tcp, context->brickowl.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+  httpSetSSLHostName( context->brickowl.http, BS_BRICKOWL_API_SERVER );
   if( ( context->checkmessageflag ) && ( context->bricksyncwebaddress ) )
     context->bricksyncwebhttp = httpOpen( &context->tcp, context->bricksyncwebaddress, 80, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING );
 

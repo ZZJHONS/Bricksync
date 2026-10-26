@@ -108,6 +108,8 @@ char *tcpResolveName( char *address, int listenflag );
 
 /* Open link to server */
 tcpLink *tcpConnect( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag );
+/* Same as tcpConnect(), with the host name sent as TLS SNI when sslflag is set (sslhostname may be NULL) */
+tcpLink *tcpConnectSSLHost( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag, const char *sslhostname );
 
 /* Listen for connections */
 tcpLink *tcpListen( tcpContext *context, int port, void *uservalue, tcpCallbackSet *netio, int sslflag );
