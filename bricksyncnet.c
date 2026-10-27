@@ -322,6 +322,8 @@ void bsTrackerInit( bsTracker *tracker, httpConnection *http )
 /* Accumulate httpresults, return failure flag */
 int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult, int accumflags )
 {
+  const char *verifyerror;
+
   DEBUG_SET_TRACKER();
 
   /* Accumulate count of connection errors */
@@ -345,7 +347,11 @@ int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult
       }
       break;
     case HTTP_RESULT_CONNECT_ERROR:
-      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to connect to server, trying again shortly...\n" );
+      verifyerror = tcpGetClearSslVerifyError( &context->tcp );
+      if( verifyerror )
+        ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "The server's certificate failed its check (" IO_RED "%s" IO_WHITE "). BrickSync will not send anything to a server it cannot verify; check your network, proxy or antivirus. Trying again shortly...\n", verifyerror );
+      else
+        ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to connect to server, trying again shortly...\n" );
       break;
     case HTTP_RESULT_TRYAGAIN_ERROR:
     case HTTP_RESULT_NOREPLY_ERROR:
