@@ -17,6 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #include "cpuconfig.h"
 #include "cc.h"
@@ -56,7 +57,8 @@ static void probeSendFinished( void *uservalue )
 static void probeTimeout( void *uservalue )
 {
   tlsProbe *probe = uservalue;
-  tcpClose( probe->tcp, probe->link );
+  /* tcp.c reports no close for a link we close ourselves: mark it here */
+  probe->closedflag = 1;
   return;
 }
 
@@ -81,13 +83,15 @@ static tcpCallbackSet probeIO =
 
 
 /* 1 = handshake completed, 0 = refused or failed, -1 = could not even start (DNS) */
-static int probeServer( tcpContext *tcp, const char *connecthost, const char *checkname, const char **verifyerror )
+static int probeServer( tcpContext *tcp, const char *connecthost, const char *checkname, const char **verifyerror, int *timedout )
 {
   tlsProbe probe;
   char *address;
   int result;
+  time_t deadline;
 
   *verifyerror = 0;
+  *timedout = 0;
   address = tcpResolveName( (char *)connecthost, 0 );
   if( !( address ) )
     return -1;
@@ -98,11 +102,17 @@ static int probeServer( tcpContext *tcp, const char *connecthost, const char *ch
   if( !( probe.link ) )
     return 0;
   tcpSetTimeout( tcp, probe.link, 15000 );
-  for( ; !( probe.readyflag ) && !( probe.closedflag ) ; )
+  /* Hard deadline too, so a server that never answers cannot hang the test */
+  deadline = time( 0 ) + 25;
+  for( ; !( probe.readyflag ) && !( probe.closedflag ) && ( time( 0 ) < deadline ) ; )
     tcpWait( tcp, 1000 );
   result = probe.readyflag;
-  if( !( probe.closedflag ) )
-    tcpClose( tcp, probe.link );
+  if( !( result ) && !( probe.closedflag ) )
+    *timedout = 1;
+  /* Always closed by us: tcp.c frees a link only once its owner has called tcpClose() */
+  tcpClose( tcp, probe.link );
+  /* Let the network thread finish with the link before the probe goes out of scope */
+  tcpWait( tcp, 200 );
   *verifyerror = tcpGetClearSslVerifyError( tcp );
   return result;
 }
@@ -135,10 +145,12 @@ static const tlsCase tlscases[] =
 int main( int argc, char **argv )
 {
   tcpContext tcp;
-  int index, result, failures;
+  int index, result, failures, timedout;
   const char *verifyerror;
   const tlsCase *tc;
 
+  /* Unbuffered, so a CI log shows how far it got */
+  setvbuf( stdout, 0, _IONBF, 0 );
   if( !( tcpInit( &tcp, 1, 1 ) ) )
   {
     printf( "FAIL: could not initialize TCP/TLS\n" );
@@ -148,11 +160,18 @@ int main( int argc, char **argv )
   for( index = 0 ; index < (int)( sizeof(tlscases) / sizeof(tlsCase) ) ; index++ )
   {
     tc = &tlscases[index];
-    result = probeServer( &tcp, tc->connecthost, tc->checkname, &verifyerror );
+    result = probeServer( &tcp, tc->connecthost, tc->checkname, &verifyerror, &timedout );
     if( result < 0 )
     {
       /* Without DNS there is nothing to learn; a missing marketplace still fails the run */
       printf( "%s: %s as %s (could not resolve)\n", ( tc->mustconnect ? "FAIL" : "SKIP" ), tc->connecthost, tc->checkname );
+      failures += tc->mustconnect;
+      continue;
+    }
+    if( timedout )
+    {
+      /* No answer at all proves nothing either way; a marketplace that never answers fails the run */
+      printf( "%s: %s as %s (no answer within 25 s)\n", ( tc->mustconnect ? "FAIL" : "SKIP" ), tc->connecthost, tc->checkname );
       failures += tc->mustconnect;
       continue;
     }
@@ -179,7 +198,7 @@ int main( int argc, char **argv )
     else
       printf( "ok:   %s as %s refused (%s)\n", tc->connecthost, tc->checkname, verifyerror );
   }
-  tcpEnd( &tcp );
+  /* No tcpEnd(): it would call back into probes that are gone; exiting closes everything */
   printf( "%s\n", ( failures ? "TLS TEST FAILED" : "TLS TEST PASSED" ) );
   return ( failures ? 1 : 0 );
 }
