@@ -6,6 +6,9 @@
  * - the two marketplace APIs must connect (their certificates chain to a trusted root);
  * - servers with a broken certificate (wrong host, self-signed, expired, unknown root),
  *   and a marketplace address asked for under someone else's name, must be refused.
+ * An accepted bad server always fails the run. A badssl.com case refused by the network instead of the
+ * certificate check is tried once more, then skipped; at least one badssl.com case must be refused by the
+ * check itself.
  * Exit code 0 when every case behaves, 1 otherwise. Built and run by build.sh test / CI.
  *
  * -----------------------------------------------------------------------------
@@ -118,6 +121,16 @@ static int probeServer( tcpContext *tcp, const char *connecthost, const char *ch
 }
 
 
+static int isBadSslHost( const char *host )
+{
+  size_t len, suffixlen;
+  static const char suffix[] = ".badssl.com";
+  len = strlen( host );
+  suffixlen = sizeof(suffix) - 1;
+  return ( ( len > suffixlen ) && ( strcmp( host + len - suffixlen, suffix ) == 0 ) );
+}
+
+
 typedef struct
 {
   const char *connecthost;
@@ -147,7 +160,7 @@ static const tlsCase tlscases[] =
 int main( int argc, char **argv )
 {
   tcpContext tcp;
-  int index, result, failures, timedout;
+  int index, result, failures, timedout, badsslproven, badsslskipped;
   const char *verifyerror;
   const tlsCase *tc;
 
@@ -159,6 +172,8 @@ int main( int argc, char **argv )
     return 1;
   }
   failures = 0;
+  badsslproven = 0;
+  badsslskipped = 0;
   for( index = 0 ; index < (int)( sizeof(tlscases) / sizeof(tlsCase) ) ; index++ )
   {
     tc = &tlscases[index];
@@ -202,12 +217,35 @@ int main( int argc, char **argv )
     }
     else if( tc->mustbeverifyerror && !( verifyerror ) )
     {
-      printf( "FAIL: %s as %s refused without a certificate error (network failure?)\n", tc->connecthost, tc->checkname );
-      failures++;
+      /* badssl.com drops connections from CI runners now and then (twice in a row too): a refusal by the
+       * network proves nothing either way, like no answer. Our own servers get no such pass */
+      if( isBadSslHost( tc->connecthost ) )
+      {
+        printf( "SKIP: %s as %s refused twice without a certificate error (network failure)\n", tc->connecthost, tc->checkname );
+        badsslskipped++;
+      }
+      else
+      {
+        printf( "FAIL: %s as %s refused without a certificate error (network failure?)\n", tc->connecthost, tc->checkname );
+        failures++;
+      }
     }
     else
+    {
       printf( "ok:   %s as %s refused (%s)\n", tc->connecthost, tc->checkname, verifyerror );
+      if( isBadSslHost( tc->connecthost ) )
+        badsslproven++;
+    }
   }
+  /* The certificate checks themselves (expiry, untrusted chains) are proven only by badssl.com: at least one
+   * of its cases must have been refused by the check */
+  if( !( badsslproven ) )
+  {
+    printf( "FAIL: no badssl.com case was refused by the certificate check (%d skipped)\n", badsslskipped );
+    failures++;
+  }
+  else if( badsslskipped )
+    printf( "note: %d badssl.com case(s) skipped, %d proven\n", badsslskipped, badsslproven );
   /* No tcpEnd(): it would call back into probes that are gone; exiting closes everything */
   printf( "%s\n", ( failures ? "TLS TEST FAILED" : "TLS TEST PASSED" ) );
   return ( failures ? 1 : 0 );
