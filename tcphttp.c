@@ -912,7 +912,7 @@ static int httpParseRecvChunk( httpQuery *query, void **retbufdata, size_t *retb
 static int httpParseRecvData( httpConnection *http )
 {
   int parsecode;
-  size_t bufsize, copysize, headerbreak;
+  size_t bufsize, copysize, headerbreak, headerused;
   httpQuery *query;
   void *bufdata;
   tcpDataBuffer *recvbuf, *recvbufnext;
@@ -981,7 +981,9 @@ static int httpParseRecvData( httpConnection *http )
         }
         else if( parsecode == 0 )
         {
-          /* Not enough data to read header yet */
+          /* Not enough data to read header yet: this buffer is all header, wait for the next one */
+          bufdata = ADDRESS( bufdata, headerbreak );
+          bufsize -= headerbreak;
           continue;
         }
 
@@ -1027,10 +1029,13 @@ static int httpParseRecvData( httpConnection *http )
 
         /* Allocate content buffer */
         httpAllocData( query, query->response.headerlength + ( ( query->flags & ( HTTP_QUERY_FLAGS_NOCONTENTLENGTH | HTTP_QUERY_FLAGS_CHUNKED ) ) ? 1048576 : query->response.contentlength ) );
+        /* Bytes of this buffer that were header: the header may have begun in earlier buffers,
+           and when its blank line straddled two buffers some body bytes were copied with it */
+        headerused = headerbreak - ( query->dataoffset - query->response.headerlength );
         query->dataoffset = query->response.headerlength;
         /* Skip header to get remaining data */
-        bufdata = ADDRESS( bufdata, query->response.headerlength );
-        bufsize -= query->response.headerlength;
+        bufdata = ADDRESS( bufdata, headerused );
+        bufsize -= headerused;
       }
 
       /* Prepare to copy memory to buffer */

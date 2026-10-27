@@ -518,16 +518,17 @@ int ccSeqFindCharLast( char *seq, int seqlen, char c )
 }
 
 
+/* The ccSeqFind*Str* functions also find a match ending exactly at the end of seq */
 char *ccSeqFindStr( char *seq, int seqlen, char *str )
 {
   int i;
   for( ; seqlen ; seqlen--, seq++ )
   {
-    for( i = 0 ; i < seqlen ; i++ )
+    for( i = 0 ; i <= seqlen ; i++ )
     {
       if( !str[i] )
         return seq;
-      if( seq[i] != str[i] )
+      if( ( i == seqlen ) || ( seq[i] != str[i] ) )
         break;
     }
   }
@@ -540,11 +541,11 @@ char *ccSeqFindStrSkip( char *seq, int seqlen, char *str )
   int i;
   for( ; seqlen ; seqlen--, seq++ )
   {
-    for( i = 0 ; i < seqlen ; i++ )
+    for( i = 0 ; i <= seqlen ; i++ )
     {
       if( !str[i] )
         return seq + i;
-      if( seq[i] != str[i] )
+      if( ( i == seqlen ) || ( seq[i] != str[i] ) )
         break;
     }
   }
@@ -558,10 +559,12 @@ char *ccSeqFindStrIgnoreCaseSkip( char *seq, int seqlen, char *str )
   char c0, c1;
   for( ; seqlen ; seqlen--, seq++ )
   {
-    for( i = 0 ; i < seqlen ; i++ )
+    for( i = 0 ; i <= seqlen ; i++ )
     {
       if( !str[i] )
         return seq + i;
+      if( i == seqlen )
+        break;
       c0 = seq[i];
       c1 = str[i];
       if( ( c0 >= 'A' ) && ( c0 <= 'Z' ) )
