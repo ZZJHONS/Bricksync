@@ -199,7 +199,7 @@ static void testDecode( ioLog *log )
   check( !( strcmp( out, "??" ) ), "surrogate pair becomes ??" );
 
   bsDecodeJsonText( out, sizeof(out), "x\\u12", (int)strlen( "x\\u12" ) );
-  check( !( strcmp( out, "x" ) ), "short \\u escape dropped" );
+  check( !( strcmp( out, "x12" ) ), "short \\u escape left as plain text" );
 
   bsDecodeJsonText( out, 4, "abcdef", (int)strlen( "abcdef" ) );
   check( !( strcmp( out, "abc" ) ), "output cut at the buffer, terminated" );
