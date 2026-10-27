@@ -114,7 +114,7 @@ static void bsGitHubReplyLatestRelease( void *uservalue, int resultcode, httpRes
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Could not read the latest BrickSync release.\n" );
     return;
   }
-  ccStrCopy( context->latestreleasetag, tag, sizeof(context->latestreleasetag) );
+  snprintf( context->latestreleasetag, sizeof(context->latestreleasetag), "%s", tag );
   ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Latest BrickSync release is %s\n", context->latestreleasetag );
   return;
 }
