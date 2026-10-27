@@ -71,6 +71,7 @@
 
 #include "bricksync.h"
 #include "bsantidebug.h"
+#include "bsstop.h"
 
 
 ////
@@ -319,6 +320,70 @@ void bsTrackerInit( bsTracker *tracker, httpConnection *http )
   return;
 }
 
+/* Result for a reply whose HTTP code is not a success */
+int bsHttpErrorResult( httpResponse *response )
+{
+  if( httpIsBackoffReply( response->httpcode, response->retryafter ) )
+    return ( response->httpcode == 429 ? BS_HTTP_RESULT_RATELIMITED : BS_HTTP_RESULT_UNAVAILABLE );
+  return HTTP_RESULT_CODE_ERROR;
+}
+
+
+static const char *bsTrackerServiceName( bsContext *context, httpConnection *http )
+{
+  if( http == context->bricklink.http )
+    return "BrickLink";
+  if( http == context->bricklink.webhttp )
+    return "The BrickLink website";
+  if( http == context->brickowl.http )
+    return "BrickOwl";
+  return "The server";
+}
+
+/* A stop was requested: queries already sent finish, no new ones go out. Return 1 when stopping */
+static int bsTrackerCheckStop( bsContext *context, bsTracker *tracker )
+{
+  if( !( bsStopRequested() ) )
+    return 0;
+  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Stop requested (%s): finishing the queries already sent, the rest is left for the next run.\n", bsStopSourceName() );
+  httpAbortQueue( tracker->http );
+  tracker->failureflag = 1;
+  return 1;
+}
+
+/* The server asked us to slow down: wait until the connection's back-off time.
+   Replies of one batch share one wait: once it has passed, the next ones find nothing to wait for. */
+static void bsTrackerBackoffWait( bsContext *context, bsTracker *tracker )
+{
+  time_t until, now;
+  int seconds;
+
+  until = httpGetBackoffUntil( tracker->http );
+  now = time( 0 );
+  if( until <= now )
+    return;
+  if( httpGetBackoffCount( tracker->http ) > BS_TRACKER_BACKOFF_MAX_EPISODES )
+  {
+    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "%s is still refusing queries (HTTP %d) after %d waits, giving up for now.\n", bsTrackerServiceName( context, tracker->http ), httpGetBackoffCode( tracker->http ), BS_TRACKER_BACKOFF_MAX_EPISODES );
+    httpAbortQueue( tracker->http );
+    tracker->failureflag = 1;
+    return;
+  }
+  seconds = (int)( until - now );
+  if( httpGetBackoffCode( tracker->http ) == 429 )
+    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "%s asks us to slow down (HTTP 429), waiting " IO_CYAN "%d" IO_WHITE " seconds before trying again.\n", bsTrackerServiceName( context, tracker->http ), seconds );
+  else
+    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "%s is unavailable (HTTP %d), waiting " IO_CYAN "%d" IO_WHITE " seconds before trying again.\n", bsTrackerServiceName( context, tracker->http ), httpGetBackoffCode( tracker->http ), seconds );
+  /* Plain sleep: no reply is processed while we wait, so nothing reenters the caller's reply loop */
+  for( ; ( time( 0 ) < until ) && !( bsStopRequested() ) ; )
+  {
+    DEBUG_TRACKER_ACTIVITY();
+    ccSleep( 250 );
+  }
+  bsTrackerCheckStop( context, tracker );
+  return;
+}
+
 /* Accumulate httpresults, return failure flag */
 int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult, int accumflags )
 {
@@ -331,6 +396,9 @@ int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult
 
   if( tracker->failureflag )
     return tracker->failureflag;
+  if( bsTrackerCheckStop( context, tracker ) )
+    return tracker->failureflag;
+
   switch( httpresult )
   {
     case HTTP_RESULT_SUCCESS:
@@ -363,6 +431,22 @@ int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult
         ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "No reply received for query.\n" );
       tracker->mustsyncflag = 1;
       break;
+    /* The server asked us to slow down: wait, then the caller tries again */
+    case BS_HTTP_RESULT_RATELIMITED:
+    case BS_HTTP_RESULT_UNAVAILABLE:
+      /* A 5xx may come after the server did the work: check with a deep sync later, as for a lost reply */
+      if( httpresult == BS_HTTP_RESULT_UNAVAILABLE )
+        tracker->mustsyncflag = 1;
+      if( accumflags & ( BS_TRACKER_ACCUM_FLAGS_CANSYNC | BS_TRACKER_ACCUM_FLAGS_CANRETRY ) )
+        bsTrackerBackoffWait( context, tracker );
+      else
+      {
+        /* The caller will not retry: no point waiting, count it like any bad reply */
+        ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "%s is busy or unavailable, query failed.\n", bsTrackerServiceName( context, tracker->http ) );
+        if( !( accumflags & BS_TRACKER_ACCUM_FLAGS_NO_ERROR ) )
+          tracker->errorcount++;
+      }
+      break;
     /* Problems handling the reply */
     case HTTP_RESULT_BADFORMAT_ERROR:
     case HTTP_RESULT_CODE_ERROR:
@@ -385,51 +469,98 @@ int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult
       break;
   }
 
-  if( tracker->errorcount >= 2 )
+  if( ( tracker->errorcount >= 2 ) && !( tracker->failureflag ) )
   {
     /* Flag all still pending queries to abort */
     httpAbortQueue( tracker->http );
     /* Abort */
     ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Too many connection errors, giving up.\n" );
-
-    /* Resolve IPs again after too many connection errors */
-    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INIT "Resolving IP addresses for API and WEB services.\n" );
-    context->bricklink.apiaddress = tcpResolveName( BS_BRICKLINK_API_SERVER, 0 );
-    if( !( context->bricklink.apiaddress ) )
-    {
-      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKLINK_API_SERVER );
-      goto error;
-    }
-    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKLINK_API_SERVER, context->bricklink.apiaddress );
-    context->bricklink.webaddress = tcpResolveName( BS_BRICKLINK_WEB_SERVER, 0 );
-    if( !( context->bricklink.webaddress ) )
-    {
-      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKLINK_WEB_SERVER );
-      goto error;
-    }
-    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKLINK_WEB_SERVER, context->bricklink.webaddress );
-    context->brickowl.apiaddress = tcpResolveName( BS_BRICKOWL_API_SERVER, 0 );
-    if( !( context->brickowl.apiaddress ) )
-    {
-      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKOWL_API_SERVER );
-      goto error;
-    }
-    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKOWL_API_SERVER, context->brickowl.apiaddress );
-    
-    /* Define HTTP connections to BrickLink and BrickOwl */
-    context->bricklink.http = httpOpen( &context->tcp, context->bricklink.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
-    httpSetSSLHostName( context->bricklink.http, BS_BRICKLINK_API_SERVER );
-    context->bricklink.webhttp = httpOpen( &context->tcp, context->bricklink.webaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
-    httpSetSSLHostName( context->bricklink.webhttp, BS_BRICKLINK_WEB_SERVER );
-    context->brickowl.http = httpOpen( &context->tcp, context->brickowl.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
-    httpSetSSLHostName( context->brickowl.http, BS_BRICKOWL_API_SERVER );
-    
-    error:
-
+    /* Resolve the servers again and reopen the connections, but not here: the caller still
+       holds this connection and its queries are finishing. The main loop does it between operations. */
+    context->reconnectflag = 1;
     tracker->failureflag = 1;
   }
 
   return tracker->failureflag;
+}
+
+
+////
+
+
+/* Resolve one server, log it; return the address string (to free) or 0 */
+static char *bsResolveServer( bsContext *context, char *servername )
+{
+  char *address;
+  address = tcpResolveName( servername, 0 );
+  if( !( address ) )
+  {
+    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", servername );
+    return 0;
+  }
+  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", servername, address );
+  return address;
+}
+
+int bsResolveServiceAddresses( bsContext *context )
+{
+  char *blapiaddress, *blwebaddress, *boapiaddress;
+
+  DEBUG_SET_TRACKER();
+
+  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INIT "Resolving IP addresses for API and WEB services.\n" );
+  blapiaddress = bsResolveServer( context, BS_BRICKLINK_API_SERVER );
+  blwebaddress = ( blapiaddress ? bsResolveServer( context, BS_BRICKLINK_WEB_SERVER ) : 0 );
+  boapiaddress = ( blwebaddress ? bsResolveServer( context, BS_BRICKOWL_API_SERVER ) : 0 );
+  if( !( boapiaddress ) )
+  {
+    free( blapiaddress );
+    free( blwebaddress );
+    return 0;
+  }
+  free( context->bricklink.apiaddress );
+  free( context->bricklink.webaddress );
+  free( context->brickowl.apiaddress );
+  context->bricklink.apiaddress = blapiaddress;
+  context->bricklink.webaddress = blwebaddress;
+  context->brickowl.apiaddress = boapiaddress;
+  return 1;
+}
+
+void bsOpenServiceConnections( bsContext *context )
+{
+  DEBUG_SET_TRACKER();
+
+  context->bricklink.http = httpOpen( &context->tcp, context->bricklink.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+  httpSetSSLHostName( context->bricklink.http, BS_BRICKLINK_API_SERVER );
+  context->bricklink.webhttp = httpOpen( &context->tcp, context->bricklink.webaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+  httpSetSSLHostName( context->bricklink.webhttp, BS_BRICKLINK_WEB_SERVER );
+  context->brickowl.http = httpOpen( &context->tcp, context->brickowl.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+  httpSetSSLHostName( context->brickowl.http, BS_BRICKOWL_API_SERVER );
+  /* Increase BrickOwl timeout due to absurd times required to download inventory */
+  httpSetTimeout( context->brickowl.http, 120*1000, 120*1000 );
+  return;
+}
+
+int bsReconnectServices( bsContext *context )
+{
+  DEBUG_SET_TRACKER();
+
+  /* Closing a connection fails its queued queries through their callbacks: only with none queued */
+  if( httpGetQueryQueueCount( context->bricklink.http ) || httpGetQueryQueueCount( context->bricklink.webhttp ) || httpGetQueryQueueCount( context->brickowl.http ) )
+    return 0;
+  context->reconnectflag = 0;
+  if( !( bsResolveServiceAddresses( context ) ) )
+  {
+    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Keeping the current connections.\n" );
+    return 0;
+  }
+  httpClose( context->bricklink.http );
+  httpClose( context->bricklink.webhttp );
+  httpClose( context->brickowl.http );
+  bsOpenServiceConnections( context );
+  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Service connections reopened.\n" );
+  return 1;
 }
 
 
@@ -478,7 +609,7 @@ static void bsBrickOwlReplyUserDetails( void *uservalue, int resultcode, httpRes
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickOwl HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );

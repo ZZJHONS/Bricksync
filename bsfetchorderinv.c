@@ -98,7 +98,7 @@ static void bsBrickLinkReplyOrderInventory( void *uservalue, int resultcode, htt
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickLink HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );
@@ -266,7 +266,7 @@ static void bsBrickOwlReplyOrderInventory( void *uservalue, int resultcode, http
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickOwl HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );

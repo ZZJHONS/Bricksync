@@ -21,6 +21,8 @@
  * -----------------------------------------------------------------------------
  */
 
+#include <time.h>
+
 typedef struct httpConnection httpConnection;
 
 struct httpConnection
@@ -47,6 +49,12 @@ struct httpConnection
   int retryfailurecount;
   /* Query sent count since last reconnect */
   int sentquerycount;
+  /* Back-off asked by the server (HTTP 429 or 5xx): no new attempt before backoffuntil */
+  time_t backoffuntil;
+  /* Consecutive back-off episodes, reset by any other reply */
+  int backoffcount;
+  /* HTTP code that started the current back-off */
+  int backoffcode;
   /* Asynchronous wake from tcp thread */
   void (*wake)( tcpContext *tcp, httpConnection *http, void *wakecontext );
   void *wakecontext;
@@ -88,6 +96,9 @@ typedef struct
   char *location;
   /* Where location sits in the header: the reply buffer can move while the body arrives */
   ssize_t locationoffset;
+
+  /* Seconds from the Retry-After header, -1 when absent or unreadable */
+  int retryafter;
 } httpResponse;
 
 
@@ -126,6 +137,37 @@ int httpGetStatus( httpConnection *http );
 
 /* Set callback to be called asynchronously, by the tcp thread, when httpProcess() should be called */
 void httpSetWakeCallback( httpConnection *http, void (*wake)( tcpContext *tcp, httpConnection *http, void *wakecontext ), void *wakecontext );
+
+
+/* Back-off when a server says it is overloaded or rate limiting us.
+   The connection records when the next attempt may be made; callers ask httpGetBackoffUntil()
+   and wait. A Retry-After header is honoured (up to HTTP_RETRYAFTER_MAX seconds); without one
+   the wait doubles per consecutive episode: HTTP_BACKOFF_BASE, x2, ... up to HTTP_BACKOFF_MAX. */
+#define HTTP_BACKOFF_BASE (10)
+#define HTTP_BACKOFF_MAX (300)
+#define HTTP_RETRYAFTER_MAX (900)
+
+/* Is this reply a request to slow down? 429; the "server unavailable" family 502, 503, 504
+   (and the CDN's 520-524, 529); any other 5xx only when it carries a Retry-After.
+   A bare 500 stays a plain error: it often means this one request failed, and retrying it
+   with waits would hold up every other update behind it. */
+int httpIsBackoffReply( int httpcode, int retryafter );
+
+/* Retry-After value (delta-seconds or an HTTP date) as seconds from now, -1 if unreadable */
+int httpParseRetryAfter( const char *value, time_t now );
+
+/* Seconds to wait for the given episode (1 = first), retryafter -1 when the server gave none */
+int httpBackoffDelay( int episode, int retryafter );
+
+/* Record a reply's HTTP code: a back-off code starts or extends a back-off, any other ends the run */
+void httpNoteReplyCode( httpConnection *http, int httpcode, int retryafter, time_t now );
+
+time_t httpGetBackoffUntil( httpConnection *http );
+int httpGetBackoffCount( httpConnection *http );
+int httpGetBackoffCode( httpConnection *http );
+
+/* Parse a reply header as the connection does; for tests. Return 1 on success, 0 for incomplete, -1 on error */
+int httpParseResponseHeader( httpResponse *response, char *data, size_t datasize );
 
 
 ////

@@ -114,6 +114,7 @@ quit  <a id="cmdquit"><a/>
 Command syntax : quit  
 The command quits BrickSync.  
 Operations will resume safely when BrickSync is launched again.
+Ctrl+C (or closing the console window on Windows), SIGINT and SIGTERM (e.g. `docker stop`) stop BrickSync the same way: the queries already sent finish, the state is saved, and anything not done is picked up at the next launch. A second Ctrl+C ends BrickSync at once.
 
 prunebackups  <a id="cmdprunebackups"><a/>
 
