@@ -163,6 +163,14 @@ int main( int argc, char **argv )
   {
     tc = &tlscases[index];
     result = probeServer( &tcp, tc->connecthost, tc->checkname, &verifyerror, &timedout );
+    /* A refusal that should come from the certificate check but came from the network (the badssl.com
+     * test hosts drop connections now and then) gets one more try. A server that was ACCEPTED is never retried */
+    if( ( result == 0 ) && !( tc->mustconnect ) && ( tc->mustbeverifyerror ) && !( verifyerror ) )
+    {
+      printf( "retry: %s as %s refused without a certificate error, trying once more\n", tc->connecthost, tc->checkname );
+      tcpWait( &tcp, 2000 );
+      result = probeServer( &tcp, tc->connecthost, tc->checkname, &verifyerror, &timedout );
+    }
     if( result < 0 )
     {
       /* Without DNS there is nothing to learn; a missing marketplace still fails the run */
