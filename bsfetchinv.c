@@ -103,6 +103,8 @@ static void bsBrickLinkReplyInventory( void *uservalue, int resultcode, httpResp
   {
     if( !( blReadInventory( inv, (char *)response->body, &context->output ) ) )
     {
+      /* Drop what was read before the failure, or the retry would add those lots a second time */
+      bsxEmptyInventory( inv );
       reply->result = HTTP_RESULT_PARSE_ERROR;
       bsStoreError( context, "BrickLink JSON Parse Error", response->header, response->headerlength, response->body, response->bodysize );
     }
@@ -253,6 +255,8 @@ static void bsBrickOwlReplyInventory( void *uservalue, int resultcode, httpRespo
   {
     if( !( boReadInventoryTranslate( inv, context->inventory, &context->translationtable, (char *)response->body, &context->output ) ) )
     {
+      /* Drop what was read before the failure, or the retry would add those lots a second time */
+      bsxEmptyInventory( inv );
       reply->result = HTTP_RESULT_PARSE_ERROR;
       bsStoreError( context, "BrickOwl JSON Parse Error", response->header, response->headerlength, response->body, response->bodysize );
     }

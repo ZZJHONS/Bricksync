@@ -86,6 +86,8 @@ typedef struct
   int contentlength;
 
   char *location;
+  /* Where location sits in the header: the reply buffer can move while the body arrives */
+  ssize_t locationoffset;
 } httpResponse;
 
 

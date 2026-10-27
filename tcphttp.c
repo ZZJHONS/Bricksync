@@ -444,6 +444,10 @@ static void httpFinishFreeQuery( httpConnection *http, httpQuery *query )
     query->querycallback( query->uservalue, query->resultcode, 0 );
   else
   {
+    /* The buffer may have been realloc()ed since the header was parsed: point everything at where it is now */
+    query->response.header = query->data;
+    if( query->response.location )
+      query->response.location = ADDRESS( query->data, query->response.locationoffset );
     query->response.body = ADDRESS( query->data, query->response.headerlength );
     query->response.bodysize = query->dataoffset - query->response.headerlength;
 #if HTTP_APPEND_ZERO_BYTE
@@ -611,7 +615,10 @@ static char *httpParseHeaderLine( httpResponse *response, char *headerline, int 
   else if( ( string = ccStrCmpWordIgnoreCase( headerline, "trailer:" ) ) )
     response->trailerflag = 1;
   else if( ( string = ccStrCmpWordIgnoreCase( headerline, "location:" ) ) )
+  {
     response->location = string;
+    response->locationoffset = string - response->header;
+  }
 
   return &headerline[linelength+1];
 }

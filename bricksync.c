@@ -1428,7 +1428,7 @@ int main( int argc, char **argv )
         if( context->curtime >= context->brickowl.checktime )
         {
           context->stateflags |= BS_STATE_FLAGS_BRICKOWL_MUST_CHECK;
-          context->bricklink.checktime = context->curtime + context->bricklink.failinterval;
+          context->brickowl.checktime = context->curtime + context->brickowl.failinterval;
         }
       }
 
