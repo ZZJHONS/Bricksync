@@ -67,62 +67,68 @@
 #include "bstranslation.h"
 
 #include "bricksync.h"
+#include "bsbroadcast.h"
 
 
 ////
 
 
-static const uint8_t bsMessageSignature[BS_MESSAGE_SIGNATURE_LENGTH] = { 'B', 'S', 'M', 'S', 'G', '0', '0', '0' };
+/* Version check and broadcast message, both from the GitHub repository over verified HTTPS:
+ * - the latest release: GET https://api.github.com/repos/<repo>/releases/latest (its tag_name);
+ * - the message: GET https://raw.githubusercontent.com/<repo>/master/broadcast/message.json.
+ * Only someone who can push to the repository can change what users see. */
 
 static const char *bsMessagePriorityString[] =
 {
-  [BS_MESSAGE_PRIORITY_NONE] = IO_DEFAULT "NONE" IO_DEFAULT,
-  [BS_MESSAGE_PRIORITY_LOW] = IO_GREEN "LOW" IO_DEFAULT,
-  [BS_MESSAGE_PRIORITY_MEDIUM] = IO_YELLOW "MEDIUM" IO_DEFAULT,
-  [BS_MESSAGE_PRIORITY_HIGH] = IO_RED "HIGH" IO_DEFAULT,
-  [BS_MESSAGE_PRIORITY_CRITICAL] = IO_RED "CRITICAL" IO_DEFAULT 
+  [BS_BROADCAST_PRIORITY_NONE] = IO_DEFAULT "NONE" IO_DEFAULT,
+  [BS_BROADCAST_PRIORITY_LOW] = IO_GREEN "LOW" IO_DEFAULT,
+  [BS_BROADCAST_PRIORITY_MEDIUM] = IO_YELLOW "MEDIUM" IO_DEFAULT,
+  [BS_BROADCAST_PRIORITY_HIGH] = IO_RED "HIGH" IO_DEFAULT,
+  [BS_BROADCAST_PRIORITY_CRITICAL] = IO_RED "CRITICAL" IO_DEFAULT
 };
-
 
 
 ////
 
 
-enum
-{
-  BS_VERSION_REQ_FAIL,
-  BS_VERSION_REQ_COMPLY,
-  BS_VERSION_REQ_EXCEED
-};
-
-static inline int bsMeetVersionRequirement( int major, int minor, int revision )
-{
-  if( BS_VERSION_MAJOR > major )
-    return BS_VERSION_REQ_EXCEED;
-  if( BS_VERSION_MAJOR < major )
-    return BS_VERSION_REQ_FAIL;
-  if( BS_VERSION_MINOR > minor )
-    return BS_VERSION_REQ_EXCEED;
-  if( BS_VERSION_MINOR < minor )
-    return BS_VERSION_REQ_FAIL;
-  if( BS_VERSION_REVISION > revision )
-    return BS_VERSION_REQ_EXCEED;
-  if( BS_VERSION_REVISION < revision )
-    return BS_VERSION_REQ_FAIL;
-  return BS_VERSION_REQ_COMPLY;
-}
-
-
-static void bsBrickSyncReplyMessage( void *uservalue, int resultcode, httpResponse *response )
+static void bsGitHubReplyLatestRelease( void *uservalue, int resultcode, httpResponse *response )
 {
   bsContext *context;
-  bsMessage *msg;
+  char tag[BS_RELEASE_TAG_LENGTH_MAX];
 
   DEBUG_SET_TRACKER();
 
   context = uservalue;
+  if( resultcode != HTTP_RESULT_SUCCESS )
+  {
+    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: TCP HTTP error when fetching the latest BrickSync release : %d\n", resultcode );
+    return;
+  }
+  if( ( response ) && ( response->httpcode != 200 ) )
+  {
+    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: HTTP code when fetching the latest BrickSync release : %d\n", response->httpcode );
+    return;
+  }
+  if( !( response ) || !( response->body ) || !( bsParseLatestRelease( (char *)response->body, &context->output, tag, sizeof(tag) ) ) )
+  {
+    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Could not read the latest BrickSync release.\n" );
+    return;
+  }
+  ccStrCopy( context->latestreleasetag, tag, sizeof(context->latestreleasetag) );
+  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Latest BrickSync release is %s\n", context->latestreleasetag );
+  return;
+}
 
-  /* Validate message */
+
+static void bsGitHubReplyBroadcast( void *uservalue, int resultcode, httpResponse *response )
+{
+  bsContext *context;
+  bsBroadcast msg;
+  bsBroadcast *stored;
+
+  DEBUG_SET_TRACKER();
+
+  context = uservalue;
   if( resultcode != HTTP_RESULT_SUCCESS )
   {
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: TCP HTTP error when fetching BrickSync message : %d\n", resultcode );
@@ -133,85 +139,61 @@ static void bsBrickSyncReplyMessage( void *uservalue, int resultcode, httpRespon
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: HTTP code when fetching BrickSync message : %d\n", response->httpcode );
     return;
   }
-  if( response->bodysize != sizeof(bsMessage) )
+  if( !( response ) || !( response->body ) || !( bsParseBroadcast( (char *)response->body, &context->output, &msg ) ) )
   {
-    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: BrickSync message of unexpected length %d != %d\n", (int)response->bodysize, (int)sizeof(bsMessage) );
+    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: BrickSync message could not be read.\n" );
     return;
   }
-  msg = (bsMessage *)response->body;
-  if( !( ccMemCmp( msg->signature, (void *)bsMessageSignature, BS_MESSAGE_SIGNATURE_LENGTH ) ) )
-  {
-    ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: BrickSync message signature error.\n" );
-    return;
-  }
-  if( msg->timestamp == context->lastmessagetimestamp )
+  if( msg.timestamp == context->lastmessagetimestamp )
   {
     ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: No update for BrickSync message.\n" );
     return;
   }
-  if( msg->messagepriority >= BS_MESSAGE_PRIORITY_CRITICAL )
-    msg->messagepriority = BS_MESSAGE_PRIORITY_CRITICAL;
+  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: New BrickSync message received, time stamp " CC_LLD ", priority %d\n", (long long)msg.timestamp, msg.priority );
 
-  /* Copy message */
+  /* A message for older builds only does not concern this one */
+  if( ( msg.onlybefore[0] ) && !( bsBuildOlderThan( BS_RELEASE_TAG, BS_BUILD_STAMP_STRING, msg.onlybefore ) ) )
+    msg.priority = BS_BROADCAST_PRIORITY_NONE;
+
   if( !( context->message ) )
-    context->message = malloc( sizeof(bsMessage) );
-  memcpy( context->message, msg, sizeof(bsMessage) );
-
-  msg = context->message;
-  msg->message[BS_MESSAGE_LENGTH_MAX-1] = 0;
-  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: New BrickSync message received, time stamp " CC_LLD ", priority %d\n", (long long)msg->timestamp, (int)msg->messagepriority );
-
-  /* Verify if message applies */
-  if( ( msg->messageflags & BS_MESSAGE_FLAGS_REQ_REGISTERED ) && ( context->contextflags & BS_CONTEXT_FLAGS_REGISTERED ) )
-    msg->messagepriority = BS_MESSAGE_PRIORITY_NONE;
-  if( ( msg->messageflags & BS_MESSAGE_FLAGS_REQ_UNREGISTERED ) && !( context->contextflags & BS_CONTEXT_FLAGS_REGISTERED ) )
-    msg->messagepriority = BS_MESSAGE_PRIORITY_NONE;
-  if( ( msg->messageflags & BS_MESSAGE_FLAGS_REQ_NOT_LATESTVERSION ) && ( bsMeetVersionRequirement( msg->latestversionmajor, msg->latestversionminor, msg->latestversionrevision ) >= BS_VERSION_REQ_COMPLY ) )
-    msg->messagepriority = BS_MESSAGE_PRIORITY_NONE;
-  if( ( msg->messageflags & BS_MESSAGE_FLAGS_REQ_NOT_MINIMUMVERSION ) && ( bsMeetVersionRequirement( msg->minimumversionmajor, msg->minimumversionminor, msg->minimumversionrevision ) >= BS_VERSION_REQ_COMPLY ) )
-    msg->messagepriority = BS_MESSAGE_PRIORITY_NONE;
-  if( !( msg->message[0] ) )
-    msg->messagepriority = BS_MESSAGE_PRIORITY_NONE;
+    context->message = malloc( sizeof(bsBroadcast) );
+  stored = context->message;
+  memcpy( stored, &msg, sizeof(bsBroadcast) );
 
   /* Do we have a new message for the user? */
   context->contextflags &= ~BS_CONTEXT_FLAGS_NEW_MESSAGE;
-  context->lastmessagetimestamp = msg->timestamp;
-  if( msg->messagepriority > BS_MESSAGE_PRIORITY_NONE )
+  context->lastmessagetimestamp = stored->timestamp;
+  if( stored->priority > BS_BROADCAST_PRIORITY_NONE )
     context->contextflags |= BS_CONTEXT_FLAGS_NEW_MESSAGE;
   else
-    msg->message[0] = 0;
-
+    stored->text[0] = 0;
   return;
 }
 
 
-static void bsPrintMessageSummary( bsContext *context )
+static void bsPrintVersionSummary( bsContext *context )
 {
-  int versionreq;
-  bsMessage *msg;
-  char *printstring;
-
   DEBUG_SET_TRACKER();
 
-  msg = context->message;
-  if( msg )
+  if( !( context->latestreleasetag[0] ) )
+    return;
+  switch( bsReleaseState( BS_RELEASE_TAG, BS_BUILD_STAMP_STRING, context->latestreleasetag ) )
   {
-    versionreq = bsMeetVersionRequirement( msg->latestversionmajor, msg->latestversionminor, msg->latestversionrevision );
-    if( versionreq >= BS_VERSION_REQ_COMPLY )
-    {
-      if( versionreq >= BS_VERSION_REQ_EXCEED )
-        printstring = "We are running a BrickSync version from the " IO_CYAN "F" IO_RED "U" IO_MAGENTA "T" IO_GREEN "U" IO_CYAN "R" IO_YELLOW "E" IO_DEFAULT "!! Latest version should be";
-      else
-        printstring = "We are running the latest version of BrickSync";
-    }
-    else
-      printstring = "A new version of BrickSync is available";
-    ioPrintf( &context->output, 0, BSMSG_INFO "%s : " IO_GREEN "%d.%d.%d" IO_DEFAULT "\n", printstring, (int)msg->latestversionmajor, (int)msg->latestversionminor, (int)msg->latestversionrevision );
-    if( !( bsMeetVersionRequirement( msg->minimumversionmajor, msg->minimumversionminor, msg->minimumversionrevision ) ) )
-    {
-      ioPrintf( &context->output, 0, BSMSG_WARNING "Your version of BrickSync, " IO_YELLOW "%d.%d.%d" IO_WHITE ", has been flagged as requiring an update!\n", (int)BS_VERSION_MAJOR, (int)BS_VERSION_MINOR, (int)BS_VERSION_REVISION );
-      ioPrintf( &context->output, 0, BSMSG_INFO "You can download the latest version from " IO_CYAN "http://www.bricksync.net/" IO_DEFAULT "\n" );
-    }
+    case BS_RELEASE_STATE_LATEST:
+      ioPrintf( &context->output, 0, BSMSG_INFO "We are running the latest release of BrickSync : " IO_GREEN "%s" IO_DEFAULT "\n", context->latestreleasetag );
+      break;
+    case BS_RELEASE_STATE_NEWER_AVAILABLE:
+      ioPrintf( &context->output, 0, BSMSG_WARNING "A new release of BrickSync is available : " IO_GREEN "%s" IO_WHITE " (we are " IO_YELLOW "%s" IO_WHITE ").\n", context->latestreleasetag, ( BS_RELEASE_TAG[0] ? BS_RELEASE_TAG : BS_VERSION_STRING ) );
+      ioPrintf( &context->output, 0, BSMSG_INFO "Download it from " IO_CYAN BS_DOWNLOAD_URL IO_DEFAULT "\n" );
+      break;
+    case BS_RELEASE_STATE_AHEAD:
+      ioPrintf( &context->output, 0, BSMSG_INFO "We are running a release newer than the latest one published (" IO_GREEN "%s" IO_DEFAULT ").\n", context->latestreleasetag );
+      break;
+    case BS_RELEASE_STATE_DEVELOPMENT:
+      ioPrintf( &context->output, 0, BSMSG_INFO "This is a development build (" IO_YELLOW BS_VERSION_STRING IO_DEFAULT "); the latest release is " IO_GREEN "%s" IO_DEFAULT ".\n", context->latestreleasetag );
+      break;
+    default:
+      break;
   }
   return;
 }
@@ -219,16 +201,16 @@ static void bsPrintMessageSummary( bsContext *context )
 
 static void bsPrintMessageTime( bsContext *context, char *headerstring )
 {
-  bsMessage *msg;
+  bsBroadcast *msg;
   time_t msgtime;
   struct tm timeinfo;
   char timebuf[64];
   ccGrowth growth;
 
   msg = context->message;
-  if( msg )
+  if( ( msg ) && ( msg->timestamp > 0 ) )
   {
-    msgtime = msg->timestamp;
+    msgtime = (time_t)msg->timestamp;
     ccGrowthInit( &growth, 512 );
     ccGrowthElapsedTimeString( &growth, (int64_t)context->curtime - (int64_t)msgtime, 4 );
     timeinfo = *( localtime( &msgtime ) );
@@ -236,30 +218,36 @@ static void bsPrintMessageTime( bsContext *context, char *headerstring )
     ioPrintf( &context->output, 0, BSMSG_INFO "%s : " IO_CYAN "%s" IO_DEFAULT " (%s ago).\n", headerstring, timebuf, growth.data );
     ccGrowthFree( &growth );
   }
+  return;
+}
 
+
+static void bsPrintMessageText( bsContext *context, bsBroadcast *msg )
+{
+  ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_MAGENTA "=== Message starts ===\n" IO_DEFAULT );
+  /* The text was cleaned of control characters when read (bsDecodeJsonText) */
+  ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_WHITE "%s" IO_DEFAULT "\n", msg->text );
+  ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_MAGENTA "=== Message ends ===\n" IO_DEFAULT );
   return;
 }
 
 
 void bsReadBrickSyncMessage( bsContext *context )
 {
-  bsMessage *msg;
-  bsPrintMessageSummary( context );
+  bsBroadcast *msg;
 
   DEBUG_SET_TRACKER();
 
+  bsPrintVersionSummary( context );
   msg = context->message;
-  if( !( msg ) || ( msg->messagepriority == BS_MESSAGE_PRIORITY_NONE ) )
+  if( !( msg ) || ( msg->priority == BS_BROADCAST_PRIORITY_NONE ) )
   {
     ioPrintf( &context->output, 0, BSMSG_INFO "No BrickSync broadcast message to display.\n" );
     return;
   }
-  ioPrintf( &context->output, 0, BSMSG_INFO "Message priority : %s.\n", bsMessagePriorityString[msg->messagepriority] );
+  ioPrintf( &context->output, 0, BSMSG_INFO "Message priority : %s.\n", bsMessagePriorityString[msg->priority] );
   bsPrintMessageTime( context, "Message time stamp" );
-  ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_MAGENTA "=== Message starts ===\n" IO_DEFAULT );
-  ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_WHITE "%s" IO_DEFAULT "\n", msg->message );
-  ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_MAGENTA "=== Message ends ===\n" IO_DEFAULT );
-
+  bsPrintMessageText( context, msg );
   return;
 }
 
@@ -267,47 +255,44 @@ void bsReadBrickSyncMessage( bsContext *context )
 void bsFetchBrickSyncMessage( bsContext *context )
 {
   char *querystring;
-  char *printstring;
-  bsMessage *msg;
+  bsBroadcast *msg;
 
   DEBUG_SET_TRACKER();
 
-  if( !( context->bricksyncwebhttp ) )
+  if( !( context->bricksyncwebhttp ) && !( context->githubapihttp ) )
     return;
 
-  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the latest BrickSync broadcast message...\n" );
+  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Checking for a new BrickSync release and broadcast message...\n" );
 
-  querystring = ccStrAllocPrintf( "GET /bsmessage HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: " BS_BRICKSYNC_WEB_SERVER "\r\nConnection: Close\r\n\r\n" );
-  httpAddQuery( context->bricksyncwebhttp, querystring, strlen( querystring ), HTTP_QUERY_FLAGS_RETRY, (void *)context, bsBrickSyncReplyMessage );
-  free( querystring );
+  if( context->githubapihttp )
+  {
+    querystring = ccStrAllocPrintf( "GET " BS_GITHUB_LATEST_RELEASE_PATH " HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: " BS_GITHUB_API_SERVER "\r\nAccept: application/vnd.github+json\r\nConnection: Keep-Alive\r\n\r\n" );
+    httpAddQuery( context->githubapihttp, querystring, strlen( querystring ), HTTP_QUERY_FLAGS_RETRY, (void *)context, bsGitHubReplyLatestRelease );
+    free( querystring );
+  }
+  if( context->bricksyncwebhttp )
+  {
+    querystring = ccStrAllocPrintf( "GET " BS_GITHUB_BROADCAST_PATH " HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: " BS_GITHUB_RAW_SERVER "\r\nConnection: Keep-Alive\r\n\r\n" );
+    httpAddQuery( context->bricksyncwebhttp, querystring, strlen( querystring ), HTTP_QUERY_FLAGS_RETRY, (void *)context, bsGitHubReplyBroadcast );
+    free( querystring );
+  }
 
-  /* Wait for reply */
+  /* Wait for both replies */
   bsWaitBrickSyncWebQueries( context, 0 );
 
+  bsPrintVersionSummary( context );
   msg = context->message;
-  if( msg )
+  if( ( msg ) && ( context->contextflags & BS_CONTEXT_FLAGS_NEW_MESSAGE ) )
   {
-    bsPrintMessageSummary( context );
-    if( context->contextflags & BS_CONTEXT_FLAGS_NEW_MESSAGE )
-    {
-      ioPrintf( &context->output, 0, BSMSG_INFO "There's a new BrickSync broadcast message with priority %s.\n", bsMessagePriorityString[msg->messagepriority] );
-      bsPrintMessageTime( context, "BrickSync broadcast message time stamp" );
-      if( msg->messagepriority >= BS_MESSAGE_PRIORITY_HIGH )
-      {
-        ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_MAGENTA "=== Message starts ===\n" IO_DEFAULT );
-        ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_WHITE "%s" IO_DEFAULT "\n", msg->message );
-        ioPrintf( &context->output, IO_MODEBIT_NODATE, IO_MAGENTA "=== Message ends ===\n" IO_DEFAULT );
-      }
-      else
-        ioPrintf( &context->output, 0, BSMSG_INFO "Type \"" IO_CYAN "message" IO_DEFAULT "\" to read the message.\n" );
-    }
+    ioPrintf( &context->output, 0, BSMSG_INFO "There's a new BrickSync broadcast message with priority %s.\n", bsMessagePriorityString[msg->priority] );
+    bsPrintMessageTime( context, "BrickSync broadcast message time stamp" );
+    if( msg->priority >= BS_BROADCAST_PRIORITY_HIGH )
+      bsPrintMessageText( context, msg );
     else
-      ioPrintf( &context->output, 0, BSMSG_INFO "There's no new BrickSync broadcast message.\n" );
+      ioPrintf( &context->output, 0, BSMSG_INFO "Type \"" IO_CYAN "message" IO_DEFAULT "\" to read the message.\n" );
   }
   else
-    printstring = "No BrickSync broadcast message to display.";
+    ioPrintf( &context->output, 0, BSMSG_INFO "There's no new BrickSync broadcast message.\n" );
 
   return;
 }
-
-

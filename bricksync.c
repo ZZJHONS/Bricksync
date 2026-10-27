@@ -275,6 +275,11 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
   context->messagetime = 0;
   context->message = 0;
   context->lastmessagetimestamp = 0;
+  context->latestreleasetag[0] = 0;
+  context->bricksyncwebaddress = 0;
+  context->bricksyncwebhttp = 0;
+  context->githubapiaddress = 0;
+  context->githubapihttp = 0;
   context->diskspacechecktime = 0;
   context->findordertime = 7 * (24*60*60);
 #if BS_ENABLE_MATHPUZZLE
@@ -419,17 +424,22 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
   context->bricklink.apiaddress = strdup( "54.209.53.59" );
   context->bricklink.webaddress = strdup( "54.208.56.110" );
   context->brickowl.apiaddress = strdup( "178.33.122.183" );
-  context->bricksyncwebaddress = strdup( "199.58.80.33" );
+  context->bricksyncwebaddress = 0;
 #else
   if( !( bsResolveServiceAddresses( context ) ) )
     goto error;
   if( context->checkmessageflag )
   {
-    context->bricksyncwebaddress = tcpResolveName( BS_BRICKSYNC_WEB_SERVER, 0 );
-    if( !( context->bricksyncwebaddress ) )
-      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKSYNC_WEB_SERVER );
+    context->githubapiaddress = tcpResolveName( BS_GITHUB_API_SERVER, 0 );
+    if( !( context->githubapiaddress ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_GITHUB_API_SERVER );
     else
-      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKSYNC_WEB_SERVER, context->bricksyncwebaddress );
+      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_GITHUB_API_SERVER, context->githubapiaddress );
+    context->bricksyncwebaddress = tcpResolveName( BS_GITHUB_RAW_SERVER, 0 );
+    if( !( context->bricksyncwebaddress ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_GITHUB_RAW_SERVER );
+    else
+      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_GITHUB_RAW_SERVER, context->bricksyncwebaddress );
   }
 #endif
 
@@ -445,7 +455,15 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
   /* Define HTTP connections to BrickLink and BrickOwl */
   bsOpenServiceConnections( context );
   if( ( context->checkmessageflag ) && ( context->bricksyncwebaddress ) )
-    context->bricksyncwebhttp = httpOpen( &context->tcp, context->bricksyncwebaddress, 80, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING );
+  {
+    context->bricksyncwebhttp = httpOpen( &context->tcp, context->bricksyncwebaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+    httpSetSSLHostName( context->bricksyncwebhttp, BS_GITHUB_RAW_SERVER );
+  }
+  if( ( context->checkmessageflag ) && ( context->githubapiaddress ) )
+  {
+    context->githubapihttp = httpOpen( &context->tcp, context->githubapiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+    httpSetSSLHostName( context->githubapihttp, BS_GITHUB_API_SERVER );
+  }
 
   /* Determine next synchronization times */
   context->curtime = time( 0 );
@@ -1284,7 +1302,7 @@ int main( int argc, char **argv )
     ioPrintf( &context->output, 0, "\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "As this appears to be your first time running BrickSync, " IO_RED "please read the Frequently Asked Questions" IO_DEFAULT ".\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "Before you add or edit any inventory, read especially the questions " IO_YELLOW "#2" IO_DEFAULT " and " IO_YELLOW "#3" IO_DEFAULT ":\n" );
-    ioPrintf( &context->output, 0, BSMSG_INFO IO_RED "http://www.bricksync.net/guidefaq.html\n" );
+    ioPrintf( &context->output, 0, BSMSG_INFO IO_RED BS_FAQ_URL "\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "Thank you.\n" );
   }
 
@@ -1681,10 +1699,13 @@ int main( int argc, char **argv )
   httpClose( context->brickowl.http );
   if( context->bricksyncwebhttp )
     httpClose( context->bricksyncwebhttp );
+  if( context->githubapihttp )
+    httpClose( context->githubapihttp );
   free( context->bricklink.apiaddress );
   free( context->bricklink.webaddress );
   free( context->brickowl.apiaddress );
   free( context->bricksyncwebaddress );
+  free( context->githubapiaddress );
 
 #if BS_ENABLE_ANTIDEBUG
   if( !( statusflag ) )

@@ -208,8 +208,10 @@ void bsFlushTcpProcessHttp( bsContext *context )
   httpProcess( context->bricklink.http );
   httpProcess( context->brickowl.http );
   httpProcess( context->bricklink.webhttp );
-  if( context->checkmessageflag )
+  if( context->bricksyncwebhttp )
     httpProcess( context->bricksyncwebhttp );
+  if( context->githubapihttp )
+    httpProcess( context->githubapihttp );
   return;
 }
 
@@ -291,7 +293,7 @@ void bsWaitBrickSyncWebQueries( bsContext *context, int maxpending )
   for( ; ; )
   {
     bsFlushTcpProcessHttp( context );
-    if( httpGetQueryQueueCount( context->bricksyncwebhttp ) > maxpending )
+    if( ( ( context->bricksyncwebhttp ) && ( httpGetQueryQueueCount( context->bricksyncwebhttp ) > maxpending ) ) || ( ( context->githubapihttp ) && ( httpGetQueryQueueCount( context->githubapihttp ) > maxpending ) ) )
       tcpWait( &context->tcp, 0 );
     else
       break;

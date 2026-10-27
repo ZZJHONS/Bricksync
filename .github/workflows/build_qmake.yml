@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 20
     env:
       BS_PORTABLE: "1"
+      # Tag builds know which release they are (version check); empty for branch builds
+      BS_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
     strategy:
       fail-fast: false
       matrix:

@@ -41,6 +41,15 @@
 // What every API request says it is: "BrickSync/1.7.4-20261026.50" (Brick Owl's API terms ask clients
 // to identify themselves, and without it BrickSync could only be told apart by its TLS fingerprint).
 // The build stamp is part of it so each release can be told apart in the marketplaces' logs.
+// The build stamp alone ("20261027.64"; "dev" for an unstamped build)
+#define BS_XSTRINGIFY(X) STRINGIFY(X)
+#define BS_BUILD_STAMP_STRING BS_XSTRINGIFY(BS_VERSION_BUILDTIME)
+// The release tag this build was made from ("v1.7.4-271026a"), "" for any other build; set by the
+// GitHub workflow when it builds a tag (build.sh, BS_RELEASE_TAG). The version check compares it with
+// the latest release.
+#if !defined(BS_RELEASE_TAG)
+  #define BS_RELEASE_TAG ""
+#endif
 #define BS_USER_AGENT "BrickSync/" BS_VERSION_STRING
 #define BS_USER_AGENT_HEADER "User-Agent: " BS_USER_AGENT "\r\n"
 
@@ -65,7 +74,14 @@
 #define BS_BRICKLINK_API_SERVER "api.bricklink.com"
 #define BS_BRICKLINK_WEB_SERVER "www.bricklink.com"
 #define BS_BRICKOWL_API_SERVER "api.brickowl.com"
-#define BS_BRICKSYNC_WEB_SERVER "www.bricksync.net"
+/* Version check and broadcast message (bsmessage.c, bsbroadcast.c): the GitHub repository */
+#define BS_GITHUB_REPOSITORY "ZZJHONS/Bricksync"
+#define BS_GITHUB_API_SERVER "api.github.com"
+#define BS_GITHUB_RAW_SERVER "raw.githubusercontent.com"
+#define BS_GITHUB_LATEST_RELEASE_PATH "/repos/" BS_GITHUB_REPOSITORY "/releases/latest"
+#define BS_GITHUB_BROADCAST_PATH "/" BS_GITHUB_REPOSITORY "/master/broadcast/message.json"
+#define BS_DOWNLOAD_URL "https://github.com/" BS_GITHUB_REPOSITORY "/releases/latest"
+#define BS_FAQ_URL "https://github.com/" BS_GITHUB_REPOSITORY "/blob/master/documentation/FAQ.md"
 
 #define BS_GLOBAL_PATH "data" CC_DIR_SEPARATOR_STRING
 
@@ -389,14 +405,18 @@ typedef struct
   int64_t limitwarningtime;
 #endif
 
-  /* BrickSync server HTTP connection */
+  /* GitHub connections for the version check (API) and the broadcast message (raw files), NULL when off */
   char *bricksyncwebaddress;
   httpConnection *bricksyncwebhttp;
+  char *githubapiaddress;
+  httpConnection *githubapihttp;
 
-  /* Current message, bsMessage* */
+  /* Current message, bsBroadcast* */
   time_t messagetime;
   void *message;
   int64_t lastmessagetimestamp;
+  /* Tag of the latest release, "" until read */
+  char latestreleasetag[32];
 
   /* Free disk space check */
   time_t diskspacechecktime;
@@ -928,50 +948,7 @@ void bsExitBrickLinkMasterMode( bsContext *context );
 
 
 
-/* Defined in bsmessage.c */
-
-#define BS_MESSAGE_SIGNATURE_LENGTH (8)
-#define BS_MESSAGE_LENGTH_MAX (512)
-
-typedef struct
-{
-  /* Signature */
-  uint8_t signature[BS_MESSAGE_SIGNATURE_LENGTH];
-  /* Unique identifier */
-  int64_t timestamp;
-  /* Latest version */
-  int8_t latestversionmajor;
-  int8_t latestversionminor;
-  int8_t latestversionrevision;
-  /* Minimum version */
-  int8_t minimumversionmajor;
-  int8_t minimumversionminor;
-  int8_t minimumversionrevision;
-  /* Message priority */
-  uint8_t messagepriority;
-  /* Message flags */
-  uint8_t messageflags;
-  /* Reserved data */
-  uint8_t reserved[32];
-  /* Message */
-  char message[BS_MESSAGE_LENGTH_MAX];
-} bsMessage;
-
-enum
-{
-  BS_MESSAGE_PRIORITY_NONE,
-  BS_MESSAGE_PRIORITY_LOW,
-  BS_MESSAGE_PRIORITY_MEDIUM,
-  BS_MESSAGE_PRIORITY_HIGH,
-  BS_MESSAGE_PRIORITY_CRITICAL,
-
-  BS_MESSAGE_PRIORITY_COUNT
-};
-
-#define BS_MESSAGE_FLAGS_REQ_REGISTERED (0x1)
-#define BS_MESSAGE_FLAGS_REQ_UNREGISTERED (0x2)
-#define BS_MESSAGE_FLAGS_REQ_NOT_LATESTVERSION (0x4)
-#define BS_MESSAGE_FLAGS_REQ_NOT_MINIMUMVERSION (0x4)
+/* Defined in bsmessage.c (the message itself: bsBroadcast, bsbroadcast.h) */
 
 void bsFetchBrickSyncMessage( bsContext *context );
 void bsReadBrickSyncMessage( bsContext *context );

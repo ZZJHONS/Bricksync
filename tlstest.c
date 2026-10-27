@@ -132,6 +132,8 @@ static const tlsCase tlscases[] =
   { "api.brickowl.com", "api.brickowl.com", 1, 0 },
   { "api.bricklink.com", "api.bricklink.com", 1, 0 },
   { "www.bricklink.com", "www.bricklink.com", 1, 0 },
+  { "api.github.com", "api.github.com", 1, 0 },
+  { "raw.githubusercontent.com", "raw.githubusercontent.com", 1, 0 },
   /* Brick Owl's address asked for as another site: the certificate does not name it */
   { "api.brickowl.com", "www.example.com", 0, 1 },
   { "api.bricklink.com", "api.brickowl.com", 0, 1 },

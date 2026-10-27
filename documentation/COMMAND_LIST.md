@@ -95,8 +95,8 @@ The command prints some general information about BrickSync.
 message  <a id="cmdmessage"><a/>
 
 Command syntax : message [update|discard]  
-Print the latest BrickSync broadcast message if any.  
-An argument of update will check for any new broadcast message.  
+Print how this build compares with the latest release on GitHub, and the latest BrickSync broadcast message if any.  
+An argument of update will check for a new release and broadcast message now (otherwise every 3 hours, with checkmessage = 1).  
 An argument of discard will discard an already received message.
 
 runfile  <a id="cmdrunfile"><a/>
