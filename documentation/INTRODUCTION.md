@@ -92,7 +92,18 @@ More precisely, here's the relevant legalese:
 \* misrepresented as being the original software.  
 \* 3. This notice may not be removed or altered from any source distribution.
 
-The source code is written in C with GNUisms, therefore it will compile with GCC, mingw64, Clang or the Intel Compiler. The only dependency is OpenSSL for socket encryption. The source code includes a build-win64 subdirectory with headers and DLLs for OpenSSL on Windows; the code therefore will build with a plain freshly installed [mingw64](https://sourceforge.net/projects/mingw-w64/files/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/installer/mingw-w64-install.exe/download) (select x86-64 as target when installing mingw64, not i686).
+The source code is written in C with GNUisms, therefore it will compile with GCC, mingw64, Clang or the Intel Compiler. The only dependency is OpenSSL 3 for socket encryption.
+
+Every build runs `build.sh`, the one place for the source list, compiler flags and version stamp; `compile`, `compile32`, `compile-win64.bat`, `compile-win32.bat` and the GitHub Actions workflow all call it. `./build.sh test` also builds and runs `tlstest`, which checks that the API servers are authenticated.
+
+* **Linux:** install gcc and the OpenSSL headers (e.g. `apt install gcc libssl-dev`), then run `./compile`.
+* **Windows:** install [MSYS2](https://www.msys2.org), and in its MINGW64 shell run `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-openssl` (32-bit: the MINGW32 shell and the `i686` packages). Then run `./build.sh` in that shell, or double-click `compile-win64.bat` (set `MSYS2_ROOT` first if MSYS2 is not in `C:\msys64`). OpenSSL is linked statically, so `bricksync.exe` needs no DLLs.
+
+The version stamp after `1.7.4-` comes from `BS_BUILD_ID`: by default the UTC date and time (`YYYYMMDD.HHMM`); release builds use `YYYYMMDD.<run number>`.
+
+BrickSync checks every server's certificate and host name and refuses servers it cannot verify. It trusts the system's certificates on Linux, and on Windows the Windows certificate store plus the `cacert.pem` shipped next to `bricksync.exe`.
+
+Each release package comes with a `.sha256` checksum and a signed build-provenance record from GitHub Actions: `gh attestation verify <package> -R ZZJHONS/Bricksync` confirms it was built by this repository's workflow.
 
 Contact  <a id="contact"><a/>
 -------

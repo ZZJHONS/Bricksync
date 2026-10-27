@@ -2,6 +2,12 @@ name: Build Matrix
 
 on: [push, workflow_dispatch]
 
+# Least privilege: read the code; id-token + attestations only to sign build provenance
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
 # Every build runs build.sh, the same script hand builds use: sources, flags and the version
 # stamp live there only. This file installs the tools, runs the TLS test and packages.
 
@@ -37,13 +43,13 @@ jobs:
           target: linux64
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
 
     - name: Setup Compiler on Windows
       if: startsWith(matrix.config.os, 'windows')
-      uses: msys2/setup-msys2@v2
+      uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
       with:
         msystem: ${{ matrix.config.msystem }}
         install: zip mingw-w64-${{ matrix.config.arch }}-toolchain mingw-w64-${{ matrix.config.arch }}-openssl mingw-w64-${{ matrix.config.arch }}-ca-certificates
@@ -73,13 +79,16 @@ jobs:
         cp withpem/cacert.pem bricksync-${{ matrix.config.target }}
         cp bricksync.conf.txt bricksync-${{ matrix.config.target }}/data
         zip -r bricksync-${{ matrix.config.target }}-1.7.4-${{ github.run_number }}.zip bricksync-${{ matrix.config.target }}
+        sha256sum bricksync-${{ matrix.config.target }}-1.7.4-${{ github.run_number }}.zip | tee bricksync-${{ matrix.config.target }}-1.7.4-${{ github.run_number }}.zip.sha256
 
     - name: Upload on Windows
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: startsWith(matrix.config.os, 'windows')
       with:
         name: ${{ matrix.config.artifact }}
-        path: "*.zip"
+        path: |
+          *.zip
+          *.zip.sha256
 
     - name: Build on Linux
       if: startsWith(matrix.config.os, 'ubuntu')
@@ -92,10 +101,19 @@ jobs:
         cp bricksync bricksync-linux64
         cp bricksync.conf.txt bricksync-linux64/data
         tar -cvzf bricksync-linux64-1.7.4-${{ github.run_number }}.tar.gz bricksync-linux64
+        sha256sum bricksync-linux64-1.7.4-${{ github.run_number }}.tar.gz | tee bricksync-linux64-1.7.4-${{ github.run_number }}.tar.gz.sha256
+
+    # Signed record that this package was built here, from this commit (gh attestation verify <file> -R ZZJHONS/Bricksync)
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: "bricksync-*-1.7.4-${{ github.run_number }}.*[pz]"
 
     - name: Upload on Linux
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: startsWith(matrix.config.os, 'ubuntu')
       with:
         name: ${{ matrix.config.artifact }}
-        path: "*.tar.gz"
+        path: |
+          *.tar.gz
+          *.tar.gz.sha256
