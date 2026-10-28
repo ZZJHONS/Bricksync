@@ -128,6 +128,16 @@ jobs:
         cp bricksync.conf.txt "$pkg/data/"
         cp macos/BrickSync.command macos/HOW-TO-RUN-ON-MAC.txt "$pkg/"
         chmod +x "$pkg/bricksync" "$pkg/BrickSync.command"
+        echo "--- Start the package (empty keys: it must load its config, name the missing keys and stop; no network)"
+        smoke="$RUNNER_TEMP/smoke"
+        rm -rf "$smoke" && cp -R "$pkg" "$smoke"
+        out=$(cd "$smoke" && perl -e 'alarm 60; exec @ARGV' ./bricksync < /dev/null 2>&1) || true
+        echo "$out"
+        echo "$out" | grep -q "bricklink.consumerkey is undefined"
+        echo "--- The same through BrickSync.command started from another folder (as a Finder double-click does)"
+        out=$(cd / && perl -e 'alarm 60; exec @ARGV' "$smoke/BrickSync.command" < /dev/null 2>&1) || true
+        echo "$out"
+        echo "$out" | grep -q "bricklink.consumerkey is undefined"
         zipname=$pkg-1.7.4-${{ github.run_number }}.zip
         ditto -c -k --keepParent "$pkg" "$zipname"
         shasum -a 256 "$zipname" | tee "$zipname.sha256"
