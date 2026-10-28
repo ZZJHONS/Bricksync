@@ -8,7 +8,7 @@
 # TARGET: linux64, linux32, win64, win32, macos-x64 (Intel Mac) or macos-arm64 (Apple Silicon).
 #         Default: what this shell builds for (Linux -> linux64; an MSYS2 MINGW64 shell -> win64,
 #         MINGW32 -> win32; a Mac -> its own chip).
-# test:   also build and run the tests: journaltest (crash recovery of file renames),
+# test:   also build and run the tests: atomictest (atomic operations, x86 and ARM alike), journaltest (crash recovery of file renames),
 #         httptest (back-off on 429/5xx and Retry-After), stoptest (clean stop on
 #         SIGINT/SIGTERM or Ctrl+C), broadcasttest (version check and broadcast message) and tlstest (needs internet: checks that servers are
 #         authenticated).
@@ -79,6 +79,7 @@ TEST_SOURCES="tlstest.c tcp.c cc.c ccstr.c mm.c debugtrack.c cpuinfo.c"
 JOURNAL_TEST_SOURCES="journaltest.c journal.c iolog.c cc.c ccstr.c mm.c debugtrack.c cpuinfo.c"
 HTTP_TEST_SOURCES="httptest.c tcphttp.c tcp.c cc.c ccstr.c mm.c debugtrack.c cpuinfo.c"
 STOP_TEST_SOURCES="stoptest.c bsstop.c cc.c ccstr.c mm.c debugtrack.c cpuinfo.c"
+ATOMIC_TEST_SOURCES="atomictest.c"
 BROADCAST_TEST_SOURCES="broadcasttest.c bsbroadcast.c json.c iolog.c cc.c ccstr.c mm.c debugtrack.c cpuinfo.c"
 
 CC=gcc
@@ -155,6 +156,8 @@ esac
 echo "Built bricksync$exe"
 
 if [ "$runtest" = "1" ]; then
+  $CC $CFLAGS $ATOMIC_TEST_SOURCES -o atomictest$exe $LIBS
+  ./atomictest$exe
   $CC $CFLAGS $JOURNAL_TEST_SOURCES -o journaltest$exe $LIBS
   ./journaltest$exe
   $CC $CFLAGS $HTTP_TEST_SOURCES -o httptest$exe $LIBS
