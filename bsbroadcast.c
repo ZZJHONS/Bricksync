@@ -69,8 +69,8 @@ int bsReleaseTagParse( const char *tag, bsReleaseTag *ret )
     return 0;
   if( !( bsReadNumber( &s, &ret->revision ) ) || ( *s++ != '-' ) )
     return 0;
-  /* DDMMYY */
-  if( !( bsReadDigits( s, 2, &day ) ) || !( bsReadDigits( s + 2, 2, &month ) ) || !( bsReadDigits( s + 4, 2, &year ) ) )
+  /* YYMMDD: year first, like every tag since v1.7.4-231110 */
+  if( !( bsReadDigits( s, 2, &year ) ) || !( bsReadDigits( s + 2, 2, &month ) ) || !( bsReadDigits( s + 4, 2, &day ) ) )
     return 0;
   if( ( day < 1 ) || ( day > 31 ) || ( month < 1 ) || ( month > 12 ) )
     return 0;

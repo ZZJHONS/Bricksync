@@ -21,6 +21,13 @@
  * -----------------------------------------------------------------------------
  */
 
+/* The anti-debug code is x86 only (rdtsc, x86 registers) and switched off (BS_ENABLE_ANTIDEBUG 0);
+ * on other CPUs (Apple Silicon) it is left out so the build compiles. */
+#if defined(__x86_64__) || defined(__x86_64) || defined(__amd64__) || defined(__amd64) || defined(__i386__) || defined(__i386) || defined(i386) || defined(_M_X64) || defined(_M_IX86)
+ #define ANTIDEBUG_X86 (1)
+#endif
+
+#if ANTIDEBUG_X86
 static inline int64_t antiDebugRdTsc1()
 {
   uint32_t low, high;
@@ -34,6 +41,7 @@ static inline int64_t antiDebugRdTsc1()
     );
   return ( (uint64_t)high << 32 ) | (uint64_t)low;
 }
+#endif
 
 
 

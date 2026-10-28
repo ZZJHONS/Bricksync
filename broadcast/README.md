@@ -12,7 +12,7 @@ the user when a newer one is out. Only someone who can push to `master` can chan
 {
   "timestamp": 1761559200,
   "priority": "high",
-  "only_before": "v1.7.4-271026a",
+  "only_before": "v1.7.4-261027a",
   "message": "Brick Owl now needs SNI.\nPlease update: https://github.com/ZZJHONS/Bricksync/releases/latest"
 }
 ```

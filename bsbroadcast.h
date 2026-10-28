@@ -2,7 +2,7 @@
  *
  * Version check and broadcast message, both read from GitHub.
  *
- * - The latest release comes from the GitHub Releases API (its tag, e.g. v1.7.4-271026a).
+ * - The latest release comes from the GitHub Releases API (its tag, e.g. v1.7.4-261027a).
  * - The broadcast message is broadcast/message.json in the repository (see broadcast/README.md).
  *
  * This file holds the parts that need no network: release tag parsing and comparison,
@@ -18,7 +18,7 @@
 #define BS_BROADCAST_TEXT_LENGTH_MAX (1024)
 
 
-/* A release tag: v<major>.<minor>.<revision>-<DDMMYY><suffix>, suffix "" or lowercase letters */
+/* A release tag: v<major>.<minor>.<revision>-<YYMMDD><suffix>, suffix "" or lowercase letters */
 typedef struct
 {
   int major;

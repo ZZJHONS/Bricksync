@@ -66,6 +66,9 @@
  #include <fcntl.h>
  #include <pthread.h>
  #include <signal.h>
+ #if defined(__APPLE__)
+  #include <mach-o/dyld.h> /* _NSGetExecutablePath(): the folder of cacert.pem */
+ #endif
 #endif
 
 
@@ -467,10 +470,34 @@ static void tcpDestroyWakePipe( tcpContext *context )
  *   plus cacert.pem next to bricksync.exe, for a root Windows has not downloaded yet.
  *   OpenSSL's built-in default paths are NOT used on Windows: they name the build machine's
  *   folders (C:\msys64\...), which any local user could create and fill with a fake root.
+ * - macOS: OpenSSL's default paths (SSL_CERT_FILE / SSL_CERT_DIR when set; release builds compile
+ *   them under /var/empty, which nobody but root can fill), Apple's own list /etc/ssl/cert.pem
+ *   (kept by macOS updates, owned by root) and cacert.pem next to the bricksync binary.
  * With none of them every connection fails its check: BrickSync never talks to an unverified server. */
 static void tcpSslLoadTrustedRoots( SSL_CTX *sslcontext )
 {
-#if !CC_WINDOWS
+#if defined(__APPLE__)
+  {
+    char exepath[PATH_MAX+16];
+    char path[PATH_MAX+16];
+    uint32_t size;
+    char *sep;
+    SSL_CTX_set_default_verify_paths( sslcontext );
+    if( access( "/etc/ssl/cert.pem", R_OK ) == 0 )
+      SSL_CTX_load_verify_locations( sslcontext, "/etc/ssl/cert.pem", 0 );
+    size = PATH_MAX;
+    if( ( _NSGetExecutablePath( exepath, &size ) == 0 ) && ( realpath( exepath, path ) ) )
+    {
+      sep = strrchr( path, '/' );
+      if( ( sep ) && ( (size_t)( sep + 1 - path ) + sizeof("cacert.pem") <= sizeof(path) ) )
+      {
+        strcpy( sep + 1, "cacert.pem" );
+        if( access( path, R_OK ) == 0 )
+          SSL_CTX_load_verify_locations( sslcontext, path, 0 );
+      }
+    }
+  }
+#elif !CC_WINDOWS
   SSL_CTX_set_default_verify_paths( sslcontext );
 #else
   {

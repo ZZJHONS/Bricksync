@@ -60,7 +60,7 @@
 
 
 
-#if defined(__linux__) || defined(__gnu_linux__) || defined(__linux) || defined(__linux)
+#if ( defined(__linux__) || defined(__gnu_linux__) || defined(__linux) ) && ANTIDEBUG_X86
 
  #define __USE_GNU
  #include <signal.h>
@@ -91,7 +91,7 @@ void antiDebugHandleSIGILL()
   return;
 }
 
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && ANTIDEBUG_X86
 
  #include <signal.h>
  #include <sys/ucontext.h>
@@ -248,6 +248,14 @@ void antiDebugHandleSIGILL()
  #else
   SetUnhandledExceptionFilter( antiDebugHandlerUD );
  #endif
+  return;
+}
+
+#elif !ANTIDEBUG_X86
+
+/* Not x86 (Apple Silicon): there is no rdtsc trap to catch, nothing to install */
+void antiDebugHandleSIGILL()
+{
   return;
 }
 

@@ -45,6 +45,19 @@ jobs:
           os: ubuntu-22.04
           target: linux64
 
+        # Each Mac build runs on its own chip, so the tests run natively (no Rosetta)
+        - name: "macOS Intel"
+          artifact: "bricksync-macos-x64"
+          os: macos-15-intel
+          target: macos-x64
+          openssl_target: darwin64-x86_64-cc
+
+        - name: "macOS Apple Silicon"
+          artifact: "bricksync-macos-arm64"
+          os: macos-15
+          target: macos-arm64
+          openssl_target: darwin64-arm64-cc
+
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -61,6 +74,72 @@ jobs:
     - name: Setup Compiler on Linux
       if: startsWith(matrix.config.os, 'ubuntu')
       run: sudo apt-get install -y libssl-dev
+
+    # OpenSSL for the Mac builds is built here from the release tarball (checksum pinned), static,
+    # for macOS 11+. Homebrew's would only run on the runner's own macOS version. Its default
+    # certificate paths point under /var/empty (root-owned, empty), so nobody can plant a root there;
+    # tcp.c loads Apple's /etc/ssl/cert.pem and the cacert.pem shipped next to the binary.
+    - name: Build OpenSSL on macOS
+      if: startsWith(matrix.config.os, 'macos')
+      shell: bash
+      env:
+        OPENSSL_VERSION: "3.5.9"
+        OPENSSL_SHA256: "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
+      run: |
+        set -e
+        cd "$RUNNER_TEMP"
+        curl -fsSL -o openssl.tar.gz "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz"
+        echo "$OPENSSL_SHA256  openssl.tar.gz" | shasum -a 256 -c -
+        tar -xzf openssl.tar.gz
+        cd "openssl-$OPENSSL_VERSION"
+        ./Configure ${{ matrix.config.openssl_target }} no-shared no-tests no-docs \
+          --prefix="$RUNNER_TEMP/openssl" --openssldir=/var/empty/bricksync-openssl \
+          -mmacosx-version-min=11.0
+        make -j"$(sysctl -n hw.ncpu)" build_libs > /dev/null
+        make install_dev > /dev/null
+        ls -l "$RUNNER_TEMP/openssl/lib"
+
+    - name: Build on macOS
+      if: startsWith(matrix.config.os, 'macos')
+      shell: bash
+      run: |
+        set -e
+        export BS_BUILD_ID=$(date -u +%Y%m%d).${{ github.run_number }}
+        export OPENSSL_DIR="$RUNNER_TEMP/openssl"
+        ./build.sh ${{ matrix.config.target }} test
+        echo "--- What the binary is and what it links (no OpenSSL library may be listed)"
+        file bricksync
+        otool -L bricksync
+        if otool -L bricksync | grep -i -E "ssl|crypto"; then echo "bricksync needs an OpenSSL library"; exit 1; fi
+        otool -l bricksync | grep -A4 LC_BUILD_VERSION | grep minos
+        codesign --verify --verbose bricksync
+        echo "--- TLS test with cacert.pem next to the binary (Mozilla's list, from Homebrew)"
+        brew list ca-certificates >/dev/null 2>&1 || brew install ca-certificates
+        pem="$(brew --prefix ca-certificates)/share/ca-certificates/cacert.pem"
+        test -s "$pem"
+        mkdir -p withpem
+        cp tlstest withpem/
+        cp "$pem" withpem/cacert.pem
+        ./withpem/tlstest
+        pkg=bricksync-${{ matrix.config.target }}
+        mkdir -p "$pkg/data"
+        cp bricksync "$pkg/"
+        cp "$pem" "$pkg/cacert.pem"
+        cp bricksync.conf.txt "$pkg/data/"
+        cp macos/BrickSync.command macos/HOW-TO-RUN-ON-MAC.txt "$pkg/"
+        chmod +x "$pkg/bricksync" "$pkg/BrickSync.command"
+        zipname=$pkg-1.7.4-${{ github.run_number }}.zip
+        ditto -c -k --keepParent "$pkg" "$zipname"
+        shasum -a 256 "$zipname" | tee "$zipname.sha256"
+
+    - name: Upload on macOS
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: startsWith(matrix.config.os, 'macos')
+      with:
+        name: ${{ matrix.config.artifact }}
+        path: |
+          *.zip
+          *.zip.sha256
 
     - name: Build on Windows
       if: startsWith(matrix.config.os, 'windows')

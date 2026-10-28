@@ -152,6 +152,9 @@ void writeCpuInfoHeader( FILE *file, cpuInfo *cpu )
     case CPUINFO_ARCH_IA32:
       fprintf( file, "#define CPUCONF_ARCH_IA32\n" );
       break;
+    case CPUINFO_ARCH_ARM64:
+      fprintf( file, "#define CPUCONF_ARCH_ARM64\n" );
+      break;
     case CPUINFO_ARCH_UNKNOWN:
     default:
       break;
@@ -371,6 +374,9 @@ void cpuPrint( cpuInfo *cpu, int printflags, char *cctarget, char *ccoptions )
         break;
       case CPUINFO_ARCH_IA32:
         printf( "Arch : IA32\n" );
+        break;
+      case CPUINFO_ARCH_ARM64:
+        printf( "Arch : ARM64\n" );
         break;
       case CPUINFO_ARCH_UNKNOWN:
       default:

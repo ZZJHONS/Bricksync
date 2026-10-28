@@ -44,7 +44,7 @@
 // The build stamp alone ("20261027.64"; "dev" for an unstamped build)
 #define BS_XSTRINGIFY(X) STRINGIFY(X)
 #define BS_BUILD_STAMP_STRING BS_XSTRINGIFY(BS_VERSION_BUILDTIME)
-// The release tag this build was made from ("v1.7.4-271026a"), "" for any other build; set by the
+// The release tag this build was made from ("v1.7.4-261027a"), "" for any other build; set by the
 // GitHub workflow when it builds a tag (build.sh, BS_RELEASE_TAG). The version check compares it with
 // the latest release.
 #if !defined(BS_RELEASE_TAG)
