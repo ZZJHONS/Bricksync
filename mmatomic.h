@@ -281,7 +281,7 @@ static inline void mmAtomicAdd8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; addb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicAdd16( mmAtomic16 *v, int16_t i )
@@ -319,7 +319,7 @@ static inline void mmAtomicSub8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; subb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicSub16( mmAtomic16 *v, int16_t i )
@@ -358,7 +358,7 @@ static inline int mmAtomicAddTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; addb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -404,7 +404,7 @@ static inline int mmAtomicSubTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; subb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -618,7 +618,7 @@ static inline int mmAtomicAddTestNegative8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; addb %2,%0 ; sets %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -664,7 +664,7 @@ static inline int mmAtomicSubTestNegative8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; subb %2,%0 ; sets %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -711,7 +711,7 @@ static inline void mmAtomicAnd8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; andb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicAnd16( mmAtomic16 *v, int16_t i )
@@ -750,7 +750,7 @@ static inline int mmAtomicAndTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; andb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -795,7 +795,7 @@ static inline void mmAtomicOr8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; orb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicOr16( mmAtomic16 *v, int16_t i )
@@ -834,7 +834,7 @@ static inline int mmAtomicOrTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; orb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -879,7 +879,7 @@ static inline void mmAtomicXor8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; xorb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicXor16( mmAtomic16 *v, int16_t i )
@@ -918,7 +918,7 @@ static inline int mmAtomicXorTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; xorb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -1008,7 +1008,7 @@ static inline int8_t mmAtomicCmpXchg8( mmAtomic8 *v, int8_t old, int8_t new )
   __asm__ __volatile__(
     "lock ; cmpxchgb %1,%2"
     :"=a"(prev)
-    :"r"(new), "m"(v->value), "a"(old) :"memory" );
+    :"q"(new), "m"(v->value), "a"(old) :"memory" );
   return prev;
 }
 
@@ -1073,7 +1073,7 @@ static inline void mmAtomicSpinWaitEq8( mmAtomic8 *v, int8_t i )
     ".p2align 4\n"
     "3:\n"
     :
-    :"m"(v->value), "r"(i) :"memory" );
+    :"m"(v->value), "q"(i) :"memory" );
   return;
 }
 
@@ -1149,7 +1149,7 @@ static inline int32_t mmAtomicSpinWaitEq8Count( mmAtomic8 *v, int8_t i, int32_t 
     ".p2align 4\n"
     "3:\n"
     :"=q"(spinmaxcount)
-    :"m"(v->value), "r"(i), "0"(spinmaxcount) :"memory" );
+    :"m"(v->value), "q"(i), "0"(spinmaxcount) :"memory" );
   return spinmaxcount;
 }
 
@@ -1229,7 +1229,7 @@ static inline void mmAtomicSpinWaitNeq8( mmAtomic8 *v, int8_t i )
     ".p2align 4\n"
     "3:\n"
     :
-    :"m"(v->value), "r"(i) :"memory" );
+    :"m"(v->value), "q"(i) :"memory" );
   return;
 }
 
@@ -1305,7 +1305,7 @@ static inline int32_t mmAtomicSpinWaitNeq8Count( mmAtomic8 *v, int8_t i, int32_t
     ".p2align 4\n"
     "3:\n"
     :"=q"(spinmaxcount)
-    :"m"(v->value), "r"(i), "0"(spinmaxcount) :"memory" );
+    :"m"(v->value), "q"(i), "0"(spinmaxcount) :"memory" );
   return spinmaxcount;
 }
 
