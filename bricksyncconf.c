@@ -459,8 +459,7 @@ static int bsConfParse( bsContext *context, bsConfParser *parser )
       {
         if( !( bsConfReadInteger( context, parser, &readint ) ) )
           goto error;
-        //context->checkmessageflag = (int)readint;
-        context->checkmessageflag = 0;
+        context->checkmessageflag = (int)readint;
       }
       else if( ccStrMatchSeq( "registrationkey", tokenstring, token->length ) )
       {

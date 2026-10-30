@@ -29,6 +29,7 @@
 #include <math.h>
 #include <limits.h>
 #include <float.h>
+#include <time.h>
 
 #include "cpuconfig.h"
 
@@ -337,6 +338,7 @@ httpConnection *httpOpen( tcpContext *tcp, char *address, int port, int flags )
   http->address = malloc( strlen( address ) + 1 );
   strcpy( http->address, address );
   http->port = port;
+  http->sslhostname = 0;
   http->keepalivemax = 1;
   http->idletimeout = HTTP_TIMEOUT_IDLE;
   http->waitingtimeout = HTTP_TIMEOUT_WAITING;
@@ -443,11 +445,17 @@ static void httpFinishFreeQuery( httpConnection *http, httpQuery *query )
     query->querycallback( query->uservalue, query->resultcode, 0 );
   else
   {
+    /* The buffer may have been realloc()ed since the header was parsed: point everything at where it is now */
+    query->response.header = query->data;
+    if( query->response.location )
+      query->response.location = ADDRESS( query->data, query->response.locationoffset );
     query->response.body = ADDRESS( query->data, query->response.headerlength );
     query->response.bodysize = query->dataoffset - query->response.headerlength;
 #if HTTP_APPEND_ZERO_BYTE
     ((char *)query->response.body)[ query->response.bodysize ] = 0;
 #endif
+    /* Before the callback: whoever handles the reply may ask how long to back off */
+    httpNoteReplyCode( http, query->response.httpcode, query->response.retryafter, time( 0 ) );
     query->querycallback( query->uservalue, HTTP_RESULT_SUCCESS, &query->response );
     /* Reset count of retry failures */
     http->retryfailurecount = 0;
@@ -508,7 +516,21 @@ void httpClose( httpConnection *http )
   httpCloseLink( http );
 
   free( http->address );
+  free( http->sslhostname );
   free( http );
+  return;
+}
+
+
+void httpSetSSLHostName( httpConnection *http, char *hostname )
+{
+  free( http->sslhostname );
+  http->sslhostname = 0;
+  if( hostname )
+  {
+    http->sslhostname = malloc( strlen( hostname ) + 1 );
+    strcpy( http->sslhostname, hostname );
+  }
   return;
 }
 
@@ -596,7 +618,12 @@ static char *httpParseHeaderLine( httpResponse *response, char *headerline, int 
   else if( ( string = ccStrCmpWordIgnoreCase( headerline, "trailer:" ) ) )
     response->trailerflag = 1;
   else if( ( string = ccStrCmpWordIgnoreCase( headerline, "location:" ) ) )
+  {
     response->location = string;
+    response->locationoffset = string - response->header;
+  }
+  else if( ( string = ccStrCmpWordIgnoreCase( headerline, "retry-after:" ) ) )
+    response->retryafter = httpParseRetryAfter( string, time( 0 ) );
 
   return &headerline[linelength+1];
 }
@@ -646,6 +673,7 @@ static int httpParseHeader( httpResponse *response, char *data, size_t datasize 
   response->trailerflag = 0;
   response->contentlength = -1;
   response->location = 0;
+  response->retryafter = -1;
 
   headerline = &header[linelength+1];
   for( ; headerline ; )
@@ -884,7 +912,7 @@ static int httpParseRecvChunk( httpQuery *query, void **retbufdata, size_t *retb
 static int httpParseRecvData( httpConnection *http )
 {
   int parsecode;
-  size_t bufsize, copysize, headerbreak;
+  size_t bufsize, copysize, headerbreak, headerused;
   httpQuery *query;
   void *bufdata;
   tcpDataBuffer *recvbuf, *recvbufnext;
@@ -953,7 +981,9 @@ static int httpParseRecvData( httpConnection *http )
         }
         else if( parsecode == 0 )
         {
-          /* Not enough data to read header yet */
+          /* Not enough data to read header yet: this buffer is all header, wait for the next one */
+          bufdata = ADDRESS( bufdata, headerbreak );
+          bufsize -= headerbreak;
           continue;
         }
 
@@ -999,10 +1029,13 @@ static int httpParseRecvData( httpConnection *http )
 
         /* Allocate content buffer */
         httpAllocData( query, query->response.headerlength + ( ( query->flags & ( HTTP_QUERY_FLAGS_NOCONTENTLENGTH | HTTP_QUERY_FLAGS_CHUNKED ) ) ? 1048576 : query->response.contentlength ) );
+        /* Bytes of this buffer that were header: the header may have begun in earlier buffers,
+           and when its blank line straddled two buffers some body bytes were copied with it */
+        headerused = headerbreak - ( query->dataoffset - query->response.headerlength );
         query->dataoffset = query->response.headerlength;
         /* Skip header to get remaining data */
-        bufdata = ADDRESS( bufdata, query->response.headerlength );
-        bufsize -= query->response.headerlength;
+        bufdata = ADDRESS( bufdata, headerused );
+        bufsize -= headerused;
       }
 
       /* Prepare to copy memory to buffer */
@@ -1187,7 +1220,7 @@ static int httpAttemptConnect( httpConnection *http )
     goto connecterror;
 
   /* Reconnect */
-  http->link = tcpConnect( http->tcp, http->address, http->port, http, &httpConnectionIO, http->flags & HTTP_CONNECTION_FLAGS_SSL );
+  http->link = tcpConnectSSLHost( http->tcp, http->address, http->port, http, &httpConnectionIO, http->flags & HTTP_CONNECTION_FLAGS_SSL, http->sslhostname );
   if( http->link )
   {
     http->status = HTTP_CONNECTION_STATUS_CONNECTING;
@@ -1398,4 +1431,220 @@ void httpSetWakeCallback( httpConnection *http, void (*wake)( tcpContext *tcp, h
 
 ////
 
+
+
+
+int httpIsBackoffReply( int httpcode, int retryafter )
+{
+  if( httpcode == 429 )
+    return 1;
+  if( ( httpcode == 502 ) || ( httpcode == 503 ) || ( httpcode == 504 ) )
+    return 1;
+  /* Cloudflare's origin-unreachable family, and 529 "site overloaded" */
+  if( ( ( httpcode >= 520 ) && ( httpcode <= 524 ) ) || ( httpcode == 529 ) )
+    return 1;
+  if( ( httpcode >= 500 ) && ( httpcode <= 599 ) && ( retryafter >= 0 ) )
+    return 1;
+  return 0;
+}
+
+
+static int httpRetryAfterMonth( const char *s )
+{
+  static const char *months[12] = { "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec" };
+  int i, c0, c1, c2;
+  c0 = s[0] | 0x20;
+  c1 = s[1] | 0x20;
+  c2 = s[2] | 0x20;
+  for( i = 0 ; i < 12 ; i++ )
+  {
+    if( ( c0 == months[i][0] ) && ( c1 == months[i][1] ) && ( c2 == months[i][2] ) )
+      return i + 1;
+  }
+  return 0;
+}
+
+/* Days since 1970-01-01 of a civil date (proleptic Gregorian), H. Hinnant's algorithm */
+static int64_t httpDaysFromCivil( int64_t y, int m, int d )
+{
+  int64_t era, yoe, doy, doe;
+  y -= ( m <= 2 );
+  era = ( y >= 0 ? y : y - 399 ) / 400;
+  yoe = y - era * 400;
+  doy = ( 153 * ( m + ( m > 2 ? -3 : 9 ) ) + 2 ) / 5 + d - 1;
+  doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + doe - 719468;
+}
+
+/* Retry-After is either delta-seconds ("120") or an HTTP date. All three date forms of
+   RFC 9110 are read: "Sun, 06 Nov 1994 08:49:37 GMT", "Sunday, 06-Nov-94 08:49:37 GMT"
+   and "Sun Nov  6 08:49:37 1994": the first plain number is the day, the second the year. */
+int httpParseRetryAfter( const char *value, time_t now )
+{
+  const char *s;
+  int64_t seconds, target, number, numbers[2];
+  int numbercount, month, hour, minute, second, timeflag, digitcount;
+
+  if( !( value ) )
+    return -1;
+  s = value;
+  while( ( *s == ' ' ) || ( *s == '\t' ) )
+    s++;
+  if( ( *s >= '0' ) && ( *s <= '9' ) )
+  {
+    /* delta-seconds, or a date starting with a number? Only digits then end: seconds */
+    seconds = 0;
+    for( ; ( *s >= '0' ) && ( *s <= '9' ) ; s++ )
+    {
+      if( seconds < 100000000 )
+        seconds = ( seconds * 10 ) + ( *s - '0' );
+    }
+    while( ( *s == ' ' ) || ( *s == '\t' ) )
+      s++;
+    if( *s == 0 )
+      return (int)seconds;
+    s = value;
+  }
+
+  numbercount = 0;
+  month = 0;
+  timeflag = 0;
+  hour = minute = second = 0;
+  numbers[0] = numbers[1] = 0;
+  while( *s )
+  {
+    if( ( *s == ' ' ) || ( *s == '\t' ) || ( *s == ',' ) || ( *s == '-' ) )
+    {
+      s++;
+      continue;
+    }
+    if( ( *s >= '0' ) && ( *s <= '9' ) )
+    {
+      number = 0;
+      digitcount = 0;
+      for( ; ( *s >= '0' ) && ( *s <= '9' ) ; s++, digitcount++ )
+      {
+        if( digitcount < 9 )
+          number = ( number * 10 ) + ( *s - '0' );
+      }
+      if( *s == ':' )
+      {
+        /* hh:mm:ss */
+        if( timeflag )
+          return -1;
+        hour = (int)number;
+        if( !( ( s[1] >= '0' ) && ( s[1] <= '9' ) && ( s[2] >= '0' ) && ( s[2] <= '9' ) && ( s[3] == ':' ) && ( s[4] >= '0' ) && ( s[4] <= '9' ) && ( s[5] >= '0' ) && ( s[5] <= '9' ) ) )
+          return -1;
+        minute = ( ( s[1] - '0' ) * 10 ) + ( s[2] - '0' );
+        second = ( ( s[4] - '0' ) * 10 ) + ( s[5] - '0' );
+        s += 6;
+        timeflag = 1;
+        continue;
+      }
+      if( numbercount >= 2 )
+        return -1;
+      numbers[ numbercount++ ] = number;
+      continue;
+    }
+    if( ( ( *s | 0x20 ) >= 'a' ) && ( ( *s | 0x20 ) <= 'z' ) )
+    {
+      if( !( month ) && s[1] && s[2] )
+        month = httpRetryAfterMonth( s );
+      while( ( ( *s | 0x20 ) >= 'a' ) && ( ( *s | 0x20 ) <= 'z' ) )
+        s++;
+      continue;
+    }
+    return -1;
+  }
+  if( !( month ) || !( timeflag ) || ( numbercount != 2 ) )
+    return -1;
+  /* Two-digit years (RFC 850): 70-99 are 19xx, the rest 20xx */
+  if( numbers[1] < 100 )
+    numbers[1] += ( numbers[1] >= 70 ? 1900 : 2000 );
+  if( ( numbers[0] < 1 ) || ( numbers[0] > 31 ) || ( numbers[1] < 1970 ) || ( numbers[1] > 9999 ) )
+    return -1;
+  if( ( hour > 23 ) || ( minute > 59 ) || ( second > 60 ) )
+    return -1;
+  target = ( httpDaysFromCivil( numbers[1], month, (int)numbers[0] ) * 86400 ) + ( hour * 3600 ) + ( minute * 60 ) + second;
+  seconds = target - (int64_t)now;
+  if( seconds < 0 )
+    seconds = 0;
+  if( seconds > 100000000 )
+    seconds = 100000000;
+  return (int)seconds;
+}
+
+
+int httpBackoffDelay( int episode, int retryafter )
+{
+  int delay, i;
+
+  if( retryafter >= 0 )
+  {
+    if( retryafter < 1 )
+      return 1;
+    if( retryafter > HTTP_RETRYAFTER_MAX )
+      return HTTP_RETRYAFTER_MAX;
+    return retryafter;
+  }
+  delay = HTTP_BACKOFF_BASE;
+  for( i = 1 ; ( i < episode ) && ( delay < HTTP_BACKOFF_MAX ) ; i++ )
+    delay <<= 1;
+  if( delay > HTTP_BACKOFF_MAX )
+    delay = HTTP_BACKOFF_MAX;
+  return delay;
+}
+
+
+void httpNoteReplyCode( httpConnection *http, int httpcode, int retryafter, time_t now )
+{
+  time_t until;
+
+  if( !( httpIsBackoffReply( httpcode, retryafter ) ) )
+  {
+    /* Any other answer ends a run of back-offs; a wait already set still stands */
+    http->backoffcount = 0;
+    return;
+  }
+  if( now >= http->backoffuntil )
+  {
+    /* A new episode: replies arriving while a back-off is pending belong to the same one */
+    http->backoffcount++;
+    http->backoffuntil = now + httpBackoffDelay( http->backoffcount, retryafter );
+    http->backoffcode = httpcode;
+  }
+  else if( retryafter >= 0 )
+  {
+    /* Same episode, but the server may ask for longer */
+    until = now + httpBackoffDelay( 1, retryafter );
+    if( until > http->backoffuntil )
+      http->backoffuntil = until;
+  }
+  return;
+}
+
+
+time_t httpGetBackoffUntil( httpConnection *http )
+{
+  return http->backoffuntil;
+}
+
+int httpGetBackoffCount( httpConnection *http )
+{
+  return http->backoffcount;
+}
+
+int httpGetBackoffCode( httpConnection *http )
+{
+  return http->backoffcode;
+}
+
+
+int httpParseResponseHeader( httpResponse *response, char *data, size_t datasize )
+{
+  return httpParseHeader( response, data, datasize );
+}
+
+
+////
 

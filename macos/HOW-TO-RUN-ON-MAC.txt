@@ -1,0 +1,41 @@
+BrickSync on a Mac
+==================
+
+Which download?
+  Apple menu > About This Mac.
+  "Chip: Apple M1/M2/M3/M4..."  -> bricksync-macos-arm64
+  "Processor: ... Intel ..."     -> bricksync-macos-x64
+  Needs macOS 11 (Big Sur) or later.
+
+macOS will block it the first time
+  BrickSync is not signed with an Apple developer certificate, so macOS says it
+  "cannot be opened because Apple cannot check it for malicious software" (or
+  "... is damaged" / "Not Opened"). This is expected. Allow it ONCE, either way:
+
+  A) Terminal (works on every macOS version)
+     1. Open Terminal (Applications > Utilities > Terminal).
+     2. Type "cd " (with a space), drag this folder onto the Terminal window, press Return.
+     3. Run:   xattr -dr com.apple.quarantine .
+        That removes the "downloaded from the internet" mark from this folder only.
+
+  B) System Settings
+     1. Double-click BrickSync.command. macOS refuses it; click Done (not "Move to Trash").
+     2. System Settings > Privacy & Security, scroll down: "BrickSync.command was blocked".
+        Click "Open Anyway" and confirm with your password.
+     3. Do the same for "bricksync" if macOS asks again.
+     (On macOS 14 and older a right-click > Open on BrickSync.command also works.)
+
+  Check the download first if you want: the .sha256 file on the release page holds its
+  checksum, and   shasum -a 256 bricksync-macos-*.zip   prints yours.
+
+Starting it
+  Double-click BrickSync.command (it opens Terminal in this folder), or in Terminal:
+     cd <this folder>
+     ./bricksync
+
+  BrickSync must run from this folder: its settings are in data/bricksync.conf.txt
+  (put your BrickLink and Brick Owl keys there first) and it keeps its inventory and
+  logs in data/. Keep cacert.pem next to bricksync: it is the list of certificate
+  authorities used, with macOS's own, to check the BrickLink and Brick Owl servers.
+
+  To stop BrickSync, type   quit   (or press Ctrl+C).

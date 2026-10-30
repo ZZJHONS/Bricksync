@@ -90,7 +90,7 @@ static void bsBrickOwlReplyEdit( void *uservalue, int resultcode, httpResponse *
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickOwl HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );
@@ -121,7 +121,7 @@ static int bsSubmitBrickOwlEdit( bsContext *context, bsxItem *item, char *printf
   for( ; ; )
   {
     poststring = ccStrAllocPrintf( "key=%s&boid=" CC_LLD "&type=%s&value=%s", context->brickowl.key, (long long)item->boid, fieldname, fieldstring );
-    querystring = ccStrAllocPrintf( "POST /v1/catalog_edit/basic_edit HTTP/1.1\r\nHost: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)strlen( poststring ), poststring );
+    querystring = ccStrAllocPrintf( "POST /v1/catalog_edit/basic_edit HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nConnection: Keep-Alive\r\n\r\n%s", (int)strlen( poststring ), poststring );
     reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, 0, (void *)item, (void *)&item->boid );
     bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY | HTTP_QUERY_FLAGS_PIPELINING, (void *)reply, bsBrickOwlReplyEdit );
     free( querystring );

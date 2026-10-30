@@ -196,14 +196,14 @@ char *blQueryInventory( size_t *retsize, char itemtypeid, char *itemid )
   tcpDataBuffer *tcpbuffer;
   size_t datalen;
 
-  if( !( tcpInit( &tcp, 1, 0 ) ) )
+  if( !( tcpInit( &tcp, 1, 1 ) ) )
   {
     printf( "ERROR: Failed to initialize TCP interface.\n" );
     return 0;
   }
 
   memset( &blquery, 0, sizeof(blServerQuery) );
-  bllink = tcpConnect( &tcp, "www.bricklink.com", 80, &blquery, &blQueryIO, 0 );
+  bllink = tcpConnectSSLHost( &tcp, "www.bricklink.com", 443, &blquery, &blQueryIO, 1, "www.bricklink.com" );
   if( !( bllink ) )
   {
     printf( "ERROR: Failed to open socket to server.\n" );
@@ -261,14 +261,14 @@ char *blQueryPriceGuide( size_t *retsize, char itemtypeid, char *itemid, int ite
   tcpDataBuffer *tcpbuffer;
   size_t datalen;
 
-  if( !( tcpInit( &tcp, 1, 0 ) ) )
+  if( !( tcpInit( &tcp, 1, 1 ) ) )
   {
     printf( "ERROR: Failed to initialize TCP interface.\n" );
     return 0;
   }
 
   memset( &blquery, 0, sizeof(blServerQuery) );
-  bllink = tcpConnect( &tcp, "www.bricklink.com", 80, &blquery, &blQueryIO, 0 );
+  bllink = tcpConnectSSLHost( &tcp, "www.bricklink.com", 443, &blquery, &blQueryIO, 1, "www.bricklink.com" );
   if( !( bllink ) )
   {
     printf( "ERROR: Failed to open socket to server.\n" );

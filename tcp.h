@@ -64,6 +64,8 @@ typedef struct
   int threadstate;
 
   void *sslcontext;
+  /* Last server certificate check that failed (an X509_V_ERR_* code, 0 = none), set by the network thread */
+  volatile long sslverifyerror;
 } tcpContext;
 
 typedef struct
@@ -99,6 +101,9 @@ int tcpInit( tcpContext *context, int threadflag, int sslsupportflag );
 /* Close all connections, free resources */
 void tcpEnd( tcpContext *context );
 
+/* Return and clear the last failed server certificate check: 0 when none, else a description of the failure */
+const char *tcpGetClearSslVerifyError( tcpContext *context );
+
 /* Resolve domain name, return malloc()ed buffer */
 char *tcpResolveName( char *address, int listenflag );
 
@@ -108,6 +113,9 @@ char *tcpResolveName( char *address, int listenflag );
 
 /* Open link to server */
 tcpLink *tcpConnect( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag );
+/* Same as tcpConnect(), for TLS: sslhostname is sent as SNI and the server's certificate must be valid
+   for that name, or the handshake fails. With sslflag set, sslhostname is required (NULL = no link) */
+tcpLink *tcpConnectSSLHost( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag, const char *sslhostname );
 
 /* Listen for connections */
 tcpLink *tcpListen( tcpContext *context, int port, void *uservalue, tcpCallbackSet *netio, int sslflag );

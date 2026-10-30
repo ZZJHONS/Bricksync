@@ -95,8 +95,8 @@ The command prints some general information about BrickSync.
 message  <a id="cmdmessage"><a/>
 
 Command syntax : message [update|discard]  
-Print the latest BrickSync broadcast message if any.  
-An argument of update will check for any new broadcast message.  
+Print how this build compares with the latest release on GitHub, and the latest BrickSync broadcast message if any.  
+An argument of update will check for a new release and broadcast message now (otherwise every 3 hours, with checkmessage = 1).  
 An argument of discard will discard an already received message.
 
 runfile  <a id="cmdrunfile"><a/>
@@ -114,6 +114,7 @@ quit  <a id="cmdquit"><a/>
 Command syntax : quit  
 The command quits BrickSync.  
 Operations will resume safely when BrickSync is launched again.
+Ctrl+C (or closing the console window on Windows), SIGINT and SIGTERM (e.g. `docker stop`) stop BrickSync the same way: the queries already sent finish, the state is saved, and anything not done is picked up at the next launch. A second Ctrl+C ends BrickSync at once.
 
 prunebackups  <a id="cmdprunebackups"><a/>
 

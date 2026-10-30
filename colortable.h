@@ -21,7 +21,7 @@
  * -----------------------------------------------------------------------------
  */
 
-#define BS_COLOR_INDEX_RANGE (256)
+#define BS_COLOR_INDEX_RANGE (512)
 
 extern int bsColorTranslationBo2Bl[BS_COLOR_INDEX_RANGE];
 

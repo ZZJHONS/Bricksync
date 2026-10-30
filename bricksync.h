@@ -28,7 +28,9 @@
 #if !defined(BS_VERSION_BUILDTIME)
   // date '+%Y%m%d' (Example: 20230101 - i.e. Jan 01, 2023 build date)
   // date '+%s' (Example: 1701463345 - seconds from epoch)
-  #define BS_VERSION_BUILDTIME // "Specify on commandline at build with -DBS_VERSION_BUILDTIME=`date '+%s'`"
+  // A build without a stamp (hand-compiled) reads "1.7.4-dev"; the GitHub Actions build passes
+  // -DBS_VERSION_BUILDTIME=<YYYYMMDD>.<run number>, e.g. 20261026.50 (.github/workflows/build_qmake.yml).
+  #define BS_VERSION_BUILDTIME dev
 #endif
 // Release Major.Minor.Revision-<seconds from epoch at compile time>
 #define VERSION_STR(A,B,C,D) STRINGIFY(A) "." STRINGIFY(B) "." STRINGIFY(C) "-" STRINGIFY(D)
@@ -36,6 +38,20 @@
 #define BS_VERSION_STRING BS_VERSION_STRING_DYNAMIC
 #define BS_VERSION_INTEGER_ENCODE(major,minor,revision) (((major)*10000)|((minor)*100)|((revision)*1))
 #define BS_VERSION_INTEGER BS_VERSION_INTEGER_ENCODE(BS_VERSION_MAJOR,BS_VERSION_MINOR,BS_VERSION_REVISION)
+// What every API request says it is: "BrickSync/1.7.4-20261026.50" (Brick Owl's API terms ask clients
+// to identify themselves, and without it BrickSync could only be told apart by its TLS fingerprint).
+// The build stamp is part of it so each release can be told apart in the marketplaces' logs.
+// The build stamp alone ("20261027.64"; "dev" for an unstamped build)
+#define BS_XSTRINGIFY(X) STRINGIFY(X)
+#define BS_BUILD_STAMP_STRING BS_XSTRINGIFY(BS_VERSION_BUILDTIME)
+// The release tag this build was made from ("v1.7.4-261027a"), "" for any other build; set by the
+// GitHub workflow when it builds a tag (build.sh, BS_RELEASE_TAG). The version check compares it with
+// the latest release.
+#if !defined(BS_RELEASE_TAG)
+  #define BS_RELEASE_TAG ""
+#endif
+#define BS_USER_AGENT "BrickSync/" BS_VERSION_STRING
+#define BS_USER_AGENT_HEADER "User-Agent: " BS_USER_AGENT "\r\n"
 
 ////
 
@@ -58,7 +74,14 @@
 #define BS_BRICKLINK_API_SERVER "api.bricklink.com"
 #define BS_BRICKLINK_WEB_SERVER "www.bricklink.com"
 #define BS_BRICKOWL_API_SERVER "api.brickowl.com"
-#define BS_BRICKSYNC_WEB_SERVER "www.bricksync.net"
+/* Version check and broadcast message (bsmessage.c, bsbroadcast.c): the GitHub repository */
+#define BS_GITHUB_REPOSITORY "ZZJHONS/Bricksync"
+#define BS_GITHUB_API_SERVER "api.github.com"
+#define BS_GITHUB_RAW_SERVER "raw.githubusercontent.com"
+#define BS_GITHUB_LATEST_RELEASE_PATH "/repos/" BS_GITHUB_REPOSITORY "/releases/latest"
+#define BS_GITHUB_BROADCAST_PATH "/" BS_GITHUB_REPOSITORY "/master/broadcast/message.json"
+#define BS_DOWNLOAD_URL "https://github.com/" BS_GITHUB_REPOSITORY "/releases/latest"
+#define BS_FAQ_URL "https://github.com/" BS_GITHUB_REPOSITORY "/blob/master/documentation/FAQ.md"
 
 #define BS_GLOBAL_PATH "data" CC_DIR_SEPARATOR_STRING
 
@@ -382,14 +405,18 @@ typedef struct
   int64_t limitwarningtime;
 #endif
 
-  /* BrickSync server HTTP connection */
+  /* GitHub connections for the version check (API) and the broadcast message (raw files), NULL when off */
   char *bricksyncwebaddress;
   httpConnection *bricksyncwebhttp;
+  char *githubapiaddress;
+  httpConnection *githubapihttp;
 
-  /* Current message, bsMessage* */
+  /* Current message, bsBroadcast* */
   time_t messagetime;
   void *message;
   int64_t lastmessagetimestamp;
+  /* Tag of the latest release, "" until read */
+  char latestreleasetag[32];
 
   /* Free disk space check */
   time_t diskspacechecktime;
@@ -411,6 +438,10 @@ typedef struct
   char *username;
   char *storename;
   char *storecurrency;
+
+  /* Too many connection errors: resolve the servers again and reopen the connections,
+     done by the main loop between operations (bsReconnectServices), never mid-operation */
+  int reconnectflag;
 
 } bsContext;
 
@@ -494,6 +525,16 @@ enum
   BS_QUERY_TYPE_COUNT
 };
 
+/* Reply results beyond tcphttp's own: the server asked us to slow down (httpIsBackoffReply).
+   Neither is a rejection of the request: the tracker waits, then the caller tries again. */
+enum
+{
+  /* HTTP 429, the request was not processed */
+  BS_HTTP_RESULT_RATELIMITED = HTTP_RESULT_COUNT,
+  /* HTTP 502/503/504 and kin: the request may or may not have been processed */
+  BS_HTTP_RESULT_UNAVAILABLE
+};
+
 
 typedef struct
 {
@@ -531,6 +572,18 @@ void bsWaitBrickLinkWebQueries( bsContext *context, int maxpending );
 void bsWaitBrickOwlQueries( bsContext *context, int maxpending );
 void bsWaitBrickSyncWebQueries( bsContext *context, int maxpending );
 
+/* Result for a reply whose HTTP code is not a success: a back-off result or HTTP_RESULT_CODE_ERROR */
+int bsHttpErrorResult( httpResponse *response );
+
+/* Resolve the BrickLink API/web and BrickOwl API servers; on success the context's address
+   strings are replaced (old ones freed), on failure they are left as they were. Return 1 on success */
+int bsResolveServiceAddresses( bsContext *context );
+/* Open the three service connections on the context's addresses */
+void bsOpenServiceConnections( bsContext *context );
+/* At a safe point (no query queued): resolve again, close the old connections, open new ones.
+   Return 1 when the connections were replaced */
+int bsReconnectServices( bsContext *context );
+
 /* Connection status generic handling */
 void bsTrackerInit( bsTracker *tracker, httpConnection *http );
 int bsTrackerAccumResult( bsContext *context, bsTracker *tracker, int httpresult, int accumflags );
@@ -540,6 +593,10 @@ int bsTrackerProcessGenericReplies( bsContext *context, bsTracker *tracker, int 
 #define BS_TRACKER_ACCUM_FLAGS_CANRETRY (0x2)
 /* Don't increment error count even if the httpresult indicates a mild failure */
 #define BS_TRACKER_ACCUM_FLAGS_NO_ERROR (0x4)
+
+/* Consecutive back-off episodes on one connection before an operation gives up
+   (without Retry-After: 10+20+40+80+160 s, about five minutes) */
+#define BS_TRACKER_BACKOFF_MAX_EPISODES (5)
 
 int bsQueryBrickOwlUserDetails( bsContext *context, boUserDetails *userdetails );
 
@@ -891,50 +948,7 @@ void bsExitBrickLinkMasterMode( bsContext *context );
 
 
 
-/* Defined in bsmessage.c */
-
-#define BS_MESSAGE_SIGNATURE_LENGTH (8)
-#define BS_MESSAGE_LENGTH_MAX (512)
-
-typedef struct
-{
-  /* Signature */
-  uint8_t signature[BS_MESSAGE_SIGNATURE_LENGTH];
-  /* Unique identifier */
-  int64_t timestamp;
-  /* Latest version */
-  int8_t latestversionmajor;
-  int8_t latestversionminor;
-  int8_t latestversionrevision;
-  /* Minimum version */
-  int8_t minimumversionmajor;
-  int8_t minimumversionminor;
-  int8_t minimumversionrevision;
-  /* Message priority */
-  uint8_t messagepriority;
-  /* Message flags */
-  uint8_t messageflags;
-  /* Reserved data */
-  uint8_t reserved[32];
-  /* Message */
-  char message[BS_MESSAGE_LENGTH_MAX];
-} bsMessage;
-
-enum
-{
-  BS_MESSAGE_PRIORITY_NONE,
-  BS_MESSAGE_PRIORITY_LOW,
-  BS_MESSAGE_PRIORITY_MEDIUM,
-  BS_MESSAGE_PRIORITY_HIGH,
-  BS_MESSAGE_PRIORITY_CRITICAL,
-
-  BS_MESSAGE_PRIORITY_COUNT
-};
-
-#define BS_MESSAGE_FLAGS_REQ_REGISTERED (0x1)
-#define BS_MESSAGE_FLAGS_REQ_UNREGISTERED (0x2)
-#define BS_MESSAGE_FLAGS_REQ_NOT_LATESTVERSION (0x4)
-#define BS_MESSAGE_FLAGS_REQ_NOT_MINIMUMVERSION (0x4)
+/* Defined in bsmessage.c (the message itself: bsBroadcast, bsbroadcast.h) */
 
 void bsFetchBrickSyncMessage( bsContext *context );
 void bsReadBrickSyncMessage( bsContext *context );

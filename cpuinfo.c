@@ -38,6 +38,8 @@
  #define ENV_ARCH_AMD64
 #elif defined(__i386__) || defined(__i386)  || defined(i386)
  #define ENV_ARCH_IA32
+#elif defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+ #define ENV_ARCH_ARM64
 #endif
 
 #if defined(__linux__) || defined(__gnu_linux__) || defined(__linux) || defined(__linux)
@@ -150,6 +152,12 @@ static void cpuInitInfo( cpuInfo *cpu )
   cpu->wordsize = 32;
   cpu->gpregs = 8;
   cpu->fpregs = 8;
+#elif defined(ENV_ARCH_ARM64)
+  cpu->arch = CPUINFO_ARCH_ARM64;
+  cpu->cacheline = 64;
+  cpu->wordsize = 64;
+  cpu->gpregs = 31;
+  cpu->fpregs = 32;
 #else
   cpu->arch = CPUINFO_ARCH_UNKNOWN;
   cpu->wordsize = sizeof(void *) * CHAR_BIT;
@@ -652,6 +660,78 @@ static void cpuGetSystemMemory( cpuInfo *cpu )
 }
 
 
+#if defined(ENV_OS_OSX)
+
+static int64_t cpuSysctlInt( const char *name )
+{
+  int64_t value64;
+  int32_t value32;
+  size_t len;
+  len = sizeof(value64);
+  value64 = 0;
+  if( !( sysctlbyname( name, &value64, &len, NULL, 0 ) ) )
+  {
+    if( len == sizeof(int64_t) )
+      return value64;
+    if( len == sizeof(int32_t) )
+    {
+      memcpy( &value32, &value64, sizeof(int32_t) );
+      return value32;
+    }
+  }
+  return 0;
+}
+
+/* sysctl reports bytes; cpuInfo keeps cache sizes in kb (-1: unknown, cpuGuessCaches fills it) */
+static void cpuSysctlCache( const char *name, int32_t *size, int32_t *line, int32_t cacheline )
+{
+  int64_t bytes;
+  bytes = cpuSysctlInt( name );
+  if( bytes <= 0 )
+    return;
+  *size = (int32_t)( bytes / 1024 );
+  *line = cacheline;
+  return;
+}
+
+static void cpuGetOsx( cpuInfo *cpu )
+{
+  char brand[256];
+  size_t len;
+  int64_t value;
+  len = sizeof(brand) - 1;
+  memset( brand, 0, sizeof(brand) );
+  if( !( sysctlbyname( "machdep.cpu.brand_string", brand, &len, NULL, 0 ) ) && ( brand[0] ) )
+    snprintf( cpu->identifier, sizeof(cpu->identifier), "%s", brand );
+  value = cpuSysctlInt( "hw.cachelinesize" );
+  if( ( value >= 16 ) && ( value <= 1024 ) )
+    cpu->cacheline = (int32_t)value;
+  #if defined(ENV_ARCH_ARM64)
+  /* Apple Silicon: performance cores first (perflevel0), else the plain hw.* names */
+  cpuSysctlCache( "hw.perflevel0.l1icachesize", &cpu->cachesizeL1code, &cpu->cachelineL1code, cpu->cacheline );
+  cpuSysctlCache( "hw.perflevel0.l1dcachesize", &cpu->cachesizeL1data, &cpu->cachelineL1data, cpu->cacheline );
+  cpuSysctlCache( "hw.perflevel0.l2cachesize", &cpu->cachesizeL2, &cpu->cachelineL2, cpu->cacheline );
+  #endif
+  if( cpu->cachesizeL1code < 0 )
+    cpuSysctlCache( "hw.l1icachesize", &cpu->cachesizeL1code, &cpu->cachelineL1code, cpu->cacheline );
+  if( cpu->cachesizeL1data < 0 )
+    cpuSysctlCache( "hw.l1dcachesize", &cpu->cachesizeL1data, &cpu->cachelineL1data, cpu->cacheline );
+  if( cpu->cachesizeL2 < 0 )
+    cpuSysctlCache( "hw.l2cachesize", &cpu->cachesizeL2, &cpu->cachelineL2, cpu->cacheline );
+  if( cpu->cachesizeL3 < 0 )
+    cpuSysctlCache( "hw.l3cachesize", &cpu->cachesizeL3, &cpu->cachelineL3, cpu->cacheline );
+  value = cpuSysctlInt( "hw.physicalcpu" );
+  if( value > 0 )
+    cpu->socketphysicalcores = (int32_t)value;
+  value = cpuSysctlInt( "hw.logicalcpu" );
+  if( value > 0 )
+    cpu->socketlogicalcores = (int32_t)value;
+  return;
+}
+
+#endif
+
+
 static void cpuGetClass( cpuInfo *cpu )
 {
   if( cpu->class != CPUINFO_CLASS_UNKNOWN )
@@ -1145,9 +1225,12 @@ void cpuGetInfo( cpuInfo *cpu )
   cpuGetCores( cpu );
   cpuGetCacheNew( cpu );
   cpuGetCacheOld( cpu );
+#endif
+#if defined(ENV_OS_OSX)
+  cpuGetOsx( cpu );
+#endif
   cpuGetCpuCount( cpu );
   cpuGetSystemMemory( cpu );
-#endif
   cpuGetClass( cpu );
   cpuGuessCaches( cpu );
   cpuApplyLastFixes( cpu );

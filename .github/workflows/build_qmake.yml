@@ -2,12 +2,24 @@ name: Build Matrix
 
 on: [push, workflow_dispatch]
 
+# Least privilege: read the code; id-token + attestations only to sign build provenance
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+# Every build runs build.sh, the same script hand builds use: sources, flags and the version
+# stamp live there only. This file installs the tools, runs the TLS test and packages.
+
 jobs:
   build:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 20
     env:
-      BUILD_NUMBER: ${{ github.run_number }}
+      BS_PORTABLE: "1"
+      # Tag builds know which release they are (version check); empty for branch builds
+      BS_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -18,8 +30,7 @@ jobs:
           msystem: MINGW64
           msystem_lower: mingw64
           arch: x86_64
-          bits: 64
-          openssl: "-x64"
+          target: win64
 
         - name: "Windows 32bit"
           artifact: "bricksync-win32"
@@ -27,65 +38,174 @@ jobs:
           msystem: MINGW32
           msystem_lower: mingw32
           arch: i686
-          bits: 32
-          openssl: ""
+          target: win32
 
         - name: "Ubuntu 22.04 64bit"
           artifact: "bricksync-linux64"
           os: ubuntu-22.04
+          target: linux64
+
+        # Each Mac build runs on its own chip, so the tests run natively (no Rosetta)
+        - name: "macOS Intel"
+          artifact: "bricksync-macos-x64"
+          os: macos-15-intel
+          target: macos-x64
+          openssl_target: darwin64-x86_64-cc
+
+        - name: "macOS Apple Silicon"
+          artifact: "bricksync-macos-arm64"
+          os: macos-15
+          target: macos-arm64
+          openssl_target: darwin64-arm64-cc
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
 
     - name: Setup Compiler on Windows
       if: startsWith(matrix.config.os, 'windows')
-      uses: msys2/setup-msys2@v2
+      uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
       with:
         msystem: ${{ matrix.config.msystem }}
-        install: git msys2-devel base-devel binutils mingw-w64-${{ matrix.config.arch }}-toolchain zip
+        install: zip mingw-w64-${{ matrix.config.arch }}-toolchain mingw-w64-${{ matrix.config.arch }}-openssl mingw-w64-${{ matrix.config.arch }}-ca-certificates
         update: true
-        
+
+    - name: Setup Compiler on Linux
+      if: startsWith(matrix.config.os, 'ubuntu')
+      run: sudo apt-get install -y libssl-dev
+
+    # OpenSSL for the Mac builds is built here from the release tarball (checksum pinned), static,
+    # for macOS 11+. Homebrew's would only run on the runner's own macOS version. Its default
+    # certificate paths point under /var/empty (root-owned, empty), so nobody can plant a root there;
+    # tcp.c loads Apple's /etc/ssl/cert.pem and the cacert.pem shipped next to the binary.
+    - name: Build OpenSSL on macOS
+      if: startsWith(matrix.config.os, 'macos')
+      shell: bash
+      env:
+        OPENSSL_VERSION: "3.5.9"
+        OPENSSL_SHA256: "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
+      run: |
+        set -e
+        cd "$RUNNER_TEMP"
+        curl -fsSL -o openssl.tar.gz "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz"
+        echo "$OPENSSL_SHA256  openssl.tar.gz" | shasum -a 256 -c -
+        tar -xzf openssl.tar.gz
+        cd "openssl-$OPENSSL_VERSION"
+        ./Configure ${{ matrix.config.openssl_target }} no-shared no-tests no-docs \
+          --prefix="$RUNNER_TEMP/openssl" --openssldir=/var/empty/bricksync-openssl \
+          -mmacosx-version-min=11.0
+        make -j"$(sysctl -n hw.ncpu)" build_libs > /dev/null
+        make install_dev > /dev/null
+        ls -l "$RUNNER_TEMP/openssl/lib"
+
+    - name: Build on macOS
+      if: startsWith(matrix.config.os, 'macos')
+      shell: bash
+      run: |
+        set -e
+        export BS_BUILD_ID=$(date -u +%Y%m%d).${{ github.run_number }}
+        export OPENSSL_DIR="$RUNNER_TEMP/openssl"
+        ./build.sh ${{ matrix.config.target }} test
+        echo "--- What the binary is and what it links (no OpenSSL library may be listed)"
+        file bricksync
+        otool -L bricksync
+        if otool -L bricksync | grep -i -E "ssl|crypto"; then echo "bricksync needs an OpenSSL library"; exit 1; fi
+        otool -l bricksync | grep -A4 LC_BUILD_VERSION | grep minos
+        codesign --verify --verbose bricksync
+        echo "--- TLS test with cacert.pem next to the binary (Mozilla's list, from Homebrew)"
+        brew list ca-certificates >/dev/null 2>&1 || brew install ca-certificates
+        pem="$(brew --prefix ca-certificates)/share/ca-certificates/cacert.pem"
+        test -s "$pem"
+        mkdir -p withpem
+        cp tlstest withpem/
+        cp "$pem" withpem/cacert.pem
+        ./withpem/tlstest
+        pkg=bricksync-${{ matrix.config.target }}
+        mkdir -p "$pkg/data"
+        cp bricksync "$pkg/"
+        cp "$pem" "$pkg/cacert.pem"
+        cp bricksync.conf.txt "$pkg/data/"
+        cp macos/BrickSync.command macos/HOW-TO-RUN-ON-MAC.txt "$pkg/"
+        chmod +x "$pkg/bricksync" "$pkg/BrickSync.command"
+        echo "--- Start the package (empty keys: it must load its config, name the missing keys and stop; no network)"
+        smoke="$RUNNER_TEMP/smoke"
+        rm -rf "$smoke" && cp -R "$pkg" "$smoke"
+        out=$(cd "$smoke" && perl -e 'alarm 60; exec @ARGV' ./bricksync < /dev/null 2>&1) || true
+        echo "$out"
+        echo "$out" | grep -q "bricklink.consumerkey is undefined"
+        echo "--- The same through BrickSync.command started from another folder (as a Finder double-click does)"
+        out=$(cd / && perl -e 'alarm 60; exec @ARGV' "$smoke/BrickSync.command" < /dev/null 2>&1) || true
+        echo "$out"
+        echo "$out" | grep -q "bricklink.consumerkey is undefined"
+        zipname=$pkg-1.7.4-${{ github.run_number }}.zip
+        ditto -c -k --keepParent "$pkg" "$zipname"
+        shasum -a 256 "$zipname" | tee "$zipname.sha256"
+
+    - name: Upload on macOS
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: startsWith(matrix.config.os, 'macos')
+      with:
+        name: ${{ matrix.config.artifact }}
+        path: |
+          *.zip
+          *.zip.sha256
+
     - name: Build on Windows
       if: startsWith(matrix.config.os, 'windows')
-      run: |
-        gcc -std=gnu99 -m${{ matrix.config.bits }} cpuconf.c cpuinfo.c -O2 -s -o cpuconf.exe
-        ./cpuconf.exe -h -ccenv
-        windres bricksync.rc -O coff -o bricksync.res
-        gcc -std=gnu99 -I./build-win${{ matrix.config.bits }}/ -L./build-win${{ matrix.config.bits }}/ -m${{ matrix.config.bits }} bricksync.c bricksyncconf.c bricksyncnet.c bricksyncinit.c bricksyncinput.c bsantidebug.c bsmessage.c bsmathpuzzle.c bsorder.c bsregister.c bsapihistory.c bstranslation.c bsevalgrade.c bsoutputxml.c bsorderdir.c bspriceguide.c bsmastermode.c bscheck.c bssync.c bsapplydiff.c bsfetchorderinv.c bsresolve.c bscatedit.c bsfetchinv.c bsfetchorderlist.c bsfetchset.c bscheckreg.c bsfetchpriceguide.c tcp.c vtlex.c cpuinfo.c antidebug.c mm.c mmhash.c mmbitmap.c cc.c ccstr.c debugtrack.c tcphttp.c oauth.c bricklink.c brickowl.c brickowlinv.c colortable.c json.c bsx.c bsxpg.c journal.c exclperm.c iolog.c crypthash.c cryptsha1.c rand.c bn512.c bn1024.c rsabn.c bricksync.res -O2 -s -fvisibility=hidden -o bricksync.exe -lm -lwsock32 -lws2_32 -lssl-1_1${{ matrix.config.openssl }} -lcrypto-1_1${{ matrix.config.openssl }}
-        mkdir -p bricksync-win${{ matrix.config.bits }}/data
-        cp bricksync.exe bricksync-win${{ matrix.config.bits }}
-        cp bricksync.conf.txt bricksync-win${{ matrix.config.bits }}/data
-        cp build-win${{ matrix.config.bits }}/libcrypto-1_1${{ matrix.config.openssl }}.dll bricksync-win${{ matrix.config.bits }}
-        cp build-win${{ matrix.config.bits }}/libssl-1_1${{ matrix.config.openssl }}.dll bricksync-win${{ matrix.config.bits }}
-        zip -ur bricksync-win${{ matrix.config.bits }}-1.7.4-${{ github.run_number }}.zip bricksync-win${{ matrix.config.bits }}
       shell: msys2 {0}
-      ## shell: cmd
-      ##        tar.exe -acvf bricksync-win${{ matrix.config.bits }}-1.7.4-${{ github.run_number }}.zip bricksync-win${{ matrix.config.bits }}
-      
+      run: |
+        export BS_BUILD_ID=$(date -u +%Y%m%d).${{ github.run_number }}
+        openssl version
+        ./build.sh ${{ matrix.config.target }} test
+        echo "--- TLS test with cacert.pem next to the exe"
+        mkdir -p withpem
+        cp tlstest.exe withpem/
+        cp /${{ matrix.config.msystem_lower }}/etc/ssl/certs/ca-bundle.crt withpem/cacert.pem
+        ./withpem/tlstest.exe
+        echo "--- DLLs bricksync.exe needs (must all be Windows system DLLs)"
+        objdump -p bricksync.exe | grep "DLL Name"
+        if objdump -p bricksync.exe | grep -i "DLL Name" | grep -i -E "ssl|crypto|libgcc|winpthread"; then echo "bricksync.exe needs a non-system DLL"; exit 1; fi
+        mkdir -p bricksync-${{ matrix.config.target }}/data
+        cp bricksync.exe bricksync-${{ matrix.config.target }}
+        cp withpem/cacert.pem bricksync-${{ matrix.config.target }}
+        cp bricksync.conf.txt bricksync-${{ matrix.config.target }}/data
+        zip -r bricksync-${{ matrix.config.target }}-1.7.4-${{ github.run_number }}.zip bricksync-${{ matrix.config.target }}
+        sha256sum bricksync-${{ matrix.config.target }}-1.7.4-${{ github.run_number }}.zip | tee bricksync-${{ matrix.config.target }}-1.7.4-${{ github.run_number }}.zip.sha256
+
     - name: Upload on Windows
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: startsWith(matrix.config.os, 'windows')
       with:
         name: ${{ matrix.config.artifact }}
-        path: "*.zip"
+        path: |
+          *.zip
+          *.zip.sha256
 
     - name: Build on Linux
       if: startsWith(matrix.config.os, 'ubuntu')
+      shell: bash
       run: |
-        gcc -std=gnu99 -m64 cpuconf.c cpuinfo.c -O2 -s -o cpuconf
-        ./cpuconf -h -ccenv
-        gcc -std=gnu99 -m64 bricksync.c bricksyncconf.c bricksyncnet.c bricksyncinit.c bricksyncinput.c bsantidebug.c bsmessage.c bsmathpuzzle.c bsorder.c bsregister.c bsapihistory.c bstranslation.c bsevalgrade.c bsoutputxml.c bsorderdir.c bspriceguide.c bsmastermode.c bscheck.c bssync.c bsapplydiff.c bsfetchorderinv.c bsresolve.c bscatedit.c bsfetchinv.c bsfetchorderlist.c bsfetchset.c bscheckreg.c bsfetchpriceguide.c tcp.c vtlex.c cpuinfo.c antidebug.c mm.c mmhash.c mmbitmap.c cc.c ccstr.c debugtrack.c tcphttp.c oauth.c bricklink.c brickowl.c brickowlinv.c colortable.c json.c bsx.c bsxpg.c journal.c exclperm.c iolog.c crypthash.c cryptsha1.c rand.c bn512.c bn1024.c rsabn.c -O2 -s -fvisibility=hidden -o bricksync -lm -lpthread -lssl -lcrypto
+        export BS_BUILD_ID=$(date -u +%Y%m%d).${{ github.run_number }}
+        openssl version
+        ./build.sh linux64 test
         mkdir -p bricksync-linux64/data
         cp bricksync bricksync-linux64
         cp bricksync.conf.txt bricksync-linux64/data
-        tar -cvzf bricksync-linux64-1.7.4-${{ github.run_number}}.tar.gz bricksync-linux64
-      shell: bash
+        tar -cvzf bricksync-linux64-1.7.4-${{ github.run_number }}.tar.gz bricksync-linux64
+        sha256sum bricksync-linux64-1.7.4-${{ github.run_number }}.tar.gz | tee bricksync-linux64-1.7.4-${{ github.run_number }}.tar.gz.sha256
+
+    # Signed record that this package was built here, from this commit (gh attestation verify <file> -R ZZJHONS/Bricksync)
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: "bricksync-*-1.7.4-${{ github.run_number }}.*[pz]"
 
     - name: Upload on Linux
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       if: startsWith(matrix.config.os, 'ubuntu')
       with:
         name: ${{ matrix.config.artifact }}
-        path: "*.tar.gz"
+        path: |
+          *.tar.gz
+          *.tar.gz.sha256

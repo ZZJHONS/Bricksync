@@ -98,7 +98,7 @@ static void bsBrickLinkReplyOrderInventory( void *uservalue, int resultcode, htt
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickLink HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );
@@ -266,7 +266,7 @@ static void bsBrickOwlReplyOrderInventory( void *uservalue, int resultcode, http
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickOwl HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );
@@ -318,7 +318,7 @@ int bsQueueBrickOwlFetchOrders( bsContext *context, bsOrderList *bsOrderlist, bs
 #endif
 
     inv = bsxNewInventory();
-    querystring = ccStrAllocPrintf( "GET /v1/order/items?key=%s&order_id="CC_LLD" HTTP/1.1\r\nHost: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, (long long)order->id );
+    querystring = ccStrAllocPrintf( "GET /v1/order/items?key=%s&order_id="CC_LLD" HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, (long long)order->id );
     reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, orderindex, (void *)order, (void *)inv );
     bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY, (void *)reply, bsBrickOwlReplyOrderInventory );
     free( querystring );

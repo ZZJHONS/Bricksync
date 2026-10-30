@@ -1,10 +1,10 @@
 The BrickOwl/BrickLink synchronization software, BrickSync, is now open source!
-http://www.bricksync.net/
+https://github.com/ZZJHONS/Bricksync (the old www.bricksync.net site is gone)
 
-Restrictions related to registration have been removed from the 1.7.1 builds (sorry, can't build OSX binaries, I don't have access to an OSX box...).
+Restrictions related to registration have been removed from the 1.7.1 builds. Since v1.7.4-261028 there are macOS builds too, for Intel and Apple Silicon Macs (see "Running on a Mac" below).
 
-Direct link to the source code:
-http://www.bricksync.net/bricksync-src.tar.gz
+Releases (Windows, Linux and macOS builds, checksums): https://github.com/ZZJHONS/Bricksync/releases/latest
+Source code: https://github.com/ZZJHONS/Bricksync
 
 It's being released under a very permissible attribution license, more precisely:
 
@@ -24,10 +24,28 @@ It's being released under a very permissible attribution license, more precisely
 * misrepresented as being the original software.
 * 3. This notice may not be removed or altered from any source distribution.
 
-The source code is written in C with GNUisms, therefore it will compile with GCC, mingw64, Clang or the Intel Compiler. The only dependency is OpenSSL for socket encryption. The source code includes a build-win64 subdirectory with headers and DLLs for OpenSSL on Windows; the code therefore will build with a plain freshly installed mingw64 (select x86-64 as target when installing mingw64, not i686).
+The source code is written in C with GNUisms, therefore it will compile with GCC, mingw64, Clang or the Intel Compiler. The only dependency is OpenSSL 3 for socket encryption.
 
-Direct link to the mingw64 installer (mingw being the famous GCC compiler ported to Windows):
-https://sourceforge.net/projects/mingw-w64/files/Toolchains targetting Win32/Personal Builds/mingw-builds/installer/mingw-w64-install.exe/download
-You'll have to edit the compile-win64.bat script to set the PATH environment variable to the /bin subdirectory of wherever you installed mingw64.
+Every build runs `build.sh`, the one place for the source list, compiler flags and version stamp; `compile`, `compile32`, `compile-win64.bat`, `compile-win32.bat` and the GitHub Actions workflow all call it. `./build.sh test` also builds and runs `tlstest`, which checks that the API servers are authenticated, plus `atomictest`, `journaltest`, `httptest`, `stoptest` and `broadcasttest`.
+
+* **Linux:** install gcc and the OpenSSL headers (e.g. `apt install gcc libssl-dev`), then run `./compile`.
+* **Windows:** install [MSYS2](https://www.msys2.org), and in its MINGW64 shell run `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-openssl` (32-bit: the MINGW32 shell and the `i686` packages). Then run `./build.sh` in that shell, or double-click `compile-win64.bat` (set `MSYS2_ROOT` first if MSYS2 is not in `C:\msys64`). OpenSSL is linked statically, so `bricksync.exe` needs no DLLs.
+* **macOS:** install the Xcode command line tools (`xcode-select --install`) and OpenSSL 3 (`brew install openssl@3`), then run `./build.sh` (it builds for the Mac's own chip; `./build.sh macos-x64` or `./build.sh macos-arm64` picks one). OpenSSL is linked statically and the binary is signed ad hoc, which Apple Silicon needs to run it.
+
+The version stamp after `1.7.4-` comes from `BS_BUILD_ID`: by default the UTC date and time (`YYYYMMDD.HHMM`); release builds use `YYYYMMDD.<run number>`.
+
+BrickSync checks every server's certificate and host name and refuses servers it cannot verify. It trusts the system's certificates on Linux; on Windows the Windows certificate store plus the `cacert.pem` shipped next to `bricksync.exe`; on macOS Apple's list (`/etc/ssl/cert.pem`) plus the `cacert.pem` shipped next to `bricksync`.
+
+Each release package comes with a `.sha256` checksum and a signed build-provenance record from GitHub Actions: `gh attestation verify <package> -R ZZJHONS/Bricksync` confirms it was built by this repository's workflow.
+
+Release tags are `v1.7.4-YYMMDD` plus an optional letter for a second release the same day, year first (`v1.7.4-261028`, `v1.7.4-261028a`). The version check compares them in that order.
+
+## Running on a Mac
+
+Download `bricksync-macos-arm64` for an Apple Silicon Mac (Apple menu > About This Mac says "Chip: Apple M...") or `bricksync-macos-x64` for an Intel Mac. macOS 11 or later.
+
+BrickSync is not signed with an Apple developer certificate, so the first time macOS refuses to open it ("Apple cannot check it for malicious software"). Allow it once: in Terminal, `cd` into the unzipped folder and run `xattr -dr com.apple.quarantine .`, or try to open `BrickSync.command`, then System Settings > Privacy & Security > Open Anyway. After that, double-click `BrickSync.command`, or run `./bricksync` from that folder: BrickSync reads `data/bricksync.conf.txt` and keeps its data next to itself. `HOW-TO-RUN-ON-MAC.txt` in the package has the steps.
+
+With `checkmessage = 1;` (the default) BrickSync asks GitHub, at start and every 3 hours, for the latest release and for the broadcast message in `broadcast/message.json`; see `broadcast/README.md`.
 
 Happy building, and coding :)

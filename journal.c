@@ -52,6 +52,7 @@
 
 #if CC_WINDOWS
  #include <windows.h>
+ #include <io.h>
 #endif
 
 
@@ -138,7 +139,7 @@ int journalRenameSync( char *oldpath, char *newpath, int retryflag )
   attemptcount = ( retryflag ? 16 : 1 );
   for( attemptindex = 0 ; ; attemptindex++ )
   {
-    if( MoveFileEx( oldpath, newpath, MOVEFILE_REPLACE_EXISTING ) )
+    if( MoveFileEx( oldpath, newpath, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) )
       break;
     if( attemptindex >= attemptcount )
       return 0;
@@ -278,7 +279,11 @@ int journalExecute( char *journalpath, char *tempjournalpath, ioLog *log, journa
   retval = 1;
   if( fwrite( growth.data, 1, growth.offset, file ) != growth.offset )
     retval = 0;
-  /* fsync()?? */
+ #if CC_WINDOWS
+  /* The journal must be on disk before any rename it covers */
+  if( ( fflush( file ) != 0 ) || ( _commit( _fileno( file ) ) != 0 ) )
+    retval = 0;
+ #endif
   if( fclose( file ) != 0 )
     retval = 0;
 #endif
@@ -316,7 +321,9 @@ int journalReplay( char *journalpath )
   int32_t entryindex, entrycount;
   size_t journalsize, srcsize;
   char *journaldata;
-  char *src;
+  char *src, *base;
+  size_t basesize;
+  int pass;
   char *oldpath, *newpath;
 
   DEBUG_SET_TRACKER();
@@ -324,13 +331,21 @@ int journalReplay( char *journalpath )
   journaldata = ccFileLoad( journalpath, 16*1048576, &journalsize );
   if( !( journaldata ) )
     return 1;
-  if( journalsize < 5 )
+  /* Layout written by journalExecute(): "<count>\0" then "<oldpath>\0<newpath>\0" per entry */
+  offset = ccSeqFindChar( journaldata, journalsize, '\0' );
+  if( offset <= 0 )
     goto error;
-  if( !( ccStrParseInt32( journaldata, &entrycount ) ) )
+  if( !( ccStrParseInt32( journaldata, &entrycount ) ) || ( entrycount < 0 ) )
     goto error;
-  src = ADDRESS( journaldata, sizeof(int32_t) + 1 );
-  srcsize = journalsize - ( sizeof(int32_t) + 1 );
+  offset++;
+  base = ADDRESS( journaldata, offset );
+  basesize = journalsize - offset;
 
+  /* Pass 0 only checks that every entry is whole; pass 1 renames. A damaged journal renames nothing */
+  for( pass = 0 ; pass < 2 ; pass++ )
+  {
+  src = base;
+  srcsize = basesize;
   for( entryindex = 0 ; entryindex < entrycount ; entryindex++ )
   {
     oldpath = src;
@@ -350,7 +365,9 @@ int journalReplay( char *journalpath )
     srcsize -= offset;
 
     /* Rename may fail when transaction was partially complete, no big deal */
-    journalRenameSync( oldpath, newpath, 0 );
+    if( pass )
+      journalRenameSync( oldpath, newpath, 0 );
+  }
   }
 
   free( journaldata );

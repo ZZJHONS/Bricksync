@@ -92,7 +92,7 @@ static void bsBrickLinkReplyInventory( void *uservalue, int resultcode, httpResp
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickLink HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );
@@ -103,6 +103,8 @@ static void bsBrickLinkReplyInventory( void *uservalue, int resultcode, httpResp
   {
     if( !( blReadInventory( inv, (char *)response->body, &context->output ) ) )
     {
+      /* Drop what was read before the failure, or the retry would add those lots a second time */
+      bsxEmptyInventory( inv );
       reply->result = HTTP_RESULT_PARSE_ERROR;
       bsStoreError( context, "BrickLink JSON Parse Error", response->header, response->headerlength, response->body, response->bodysize );
     }
@@ -242,7 +244,7 @@ static void bsBrickOwlReplyInventory( void *uservalue, int resultcode, httpRespo
   if( ( response ) && ( response->httpcode != 200 ) )
   {
     if( response->httpcode )
-      reply->result = HTTP_RESULT_CODE_ERROR;
+      reply->result = bsHttpErrorResult( response );
     bsStoreError( context, "BrickOwl HTTP Error", response->header, response->headerlength, response->body, response->bodysize );
   }
   mmListDualAddLast( &context->replylist, reply, offsetof(bsQueryReply,list) );
@@ -253,6 +255,8 @@ static void bsBrickOwlReplyInventory( void *uservalue, int resultcode, httpRespo
   {
     if( !( boReadInventoryTranslate( inv, context->inventory, &context->translationtable, (char *)response->body, &context->output ) ) )
     {
+      /* Drop what was read before the failure, or the retry would add those lots a second time */
+      bsxEmptyInventory( inv );
       reply->result = HTTP_RESULT_PARSE_ERROR;
       bsStoreError( context, "BrickOwl JSON Parse Error", response->header, response->headerlength, response->body, response->bodysize );
     }
@@ -278,7 +282,7 @@ bsxInventory *bsQueryBrickOwlInventory( bsContext *context )
   {
     ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Fetching the BrickOwl Inventory...\n" );
     /* Add an Inventory query */
-    querystring = ccStrAllocPrintf( "GET /v1/inventory/list?key=%s%s HTTP/1.1\r\nHost: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, ( context->brickowl.reuseemptyflag ? "&active_only=0" : "" ) );
+    querystring = ccStrAllocPrintf( "GET /v1/inventory/list?key=%s%s HTTP/1.1\r\n" BS_USER_AGENT_HEADER "Host: api.brickowl.com\r\nConnection: Keep-Alive\r\n\r\n", context->brickowl.key, ( context->brickowl.reuseemptyflag ? "&active_only=0" : "" ) );
     reply = bsAllocReply( context, BS_QUERY_TYPE_BRICKOWL, 0, 0, (void *)inv );
     bsBrickOwlAddQuery( context, querystring, HTTP_QUERY_FLAGS_RETRY, (void *)reply, bsBrickOwlReplyInventory );
     free( querystring );

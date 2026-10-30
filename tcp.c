@@ -66,6 +66,9 @@
  #include <fcntl.h>
  #include <pthread.h>
  #include <signal.h>
+ #if defined(__APPLE__)
+  #include <mach-o/dyld.h> /* _NSGetExecutablePath(): the folder of cacert.pem */
+ #endif
 #endif
 
 
@@ -91,6 +94,7 @@
 #if TCP_ENABLE_SSL_SUPPORT
  #include <openssl/ssl.h>
  #include <openssl/err.h>
+ #include <openssl/x509v3.h>
 #endif
 
 
@@ -458,6 +462,88 @@ static void tcpDestroyWakePipe( tcpContext *context )
 ////
 
 
+#if TCP_ENABLE_SSL_SUPPORT
+
+/* Trusted roots for checking servers. Every source that loads adds to the same store:
+ * - Linux and others: the system's own list (or SSL_CERT_FILE / SSL_CERT_DIR when set);
+ * - Windows: the Windows certificate store, kept current by Windows Update,
+ *   plus cacert.pem next to bricksync.exe, for a root Windows has not downloaded yet.
+ *   OpenSSL's built-in default paths are NOT used on Windows: they name the build machine's
+ *   folders (C:\msys64\...), which any local user could create and fill with a fake root.
+ * - macOS: OpenSSL's default paths (SSL_CERT_FILE / SSL_CERT_DIR when set; release builds compile
+ *   them under /var/empty, which nobody but root can fill), Apple's own list /etc/ssl/cert.pem
+ *   (kept by macOS updates, owned by root) and cacert.pem next to the bricksync binary.
+ * With none of them every connection fails its check: BrickSync never talks to an unverified server. */
+static void tcpSslLoadTrustedRoots( SSL_CTX *sslcontext )
+{
+#if defined(__APPLE__)
+  {
+    char exepath[PATH_MAX+16];
+    char path[PATH_MAX+16];
+    uint32_t size;
+    char *sep;
+    SSL_CTX_set_default_verify_paths( sslcontext );
+    if( access( "/etc/ssl/cert.pem", R_OK ) == 0 )
+      SSL_CTX_load_verify_locations( sslcontext, "/etc/ssl/cert.pem", 0 );
+    size = PATH_MAX;
+    if( ( _NSGetExecutablePath( exepath, &size ) == 0 ) && ( realpath( exepath, path ) ) )
+    {
+      sep = strrchr( path, '/' );
+      if( ( sep ) && ( (size_t)( sep + 1 - path ) + sizeof("cacert.pem") <= sizeof(path) ) )
+      {
+        strcpy( sep + 1, "cacert.pem" );
+        if( access( path, R_OK ) == 0 )
+          SSL_CTX_load_verify_locations( sslcontext, path, 0 );
+      }
+    }
+  }
+#elif !CC_WINDOWS
+  SSL_CTX_set_default_verify_paths( sslcontext );
+#else
+  {
+    char path[MAX_PATH+16];
+    DWORD len;
+    char *sep;
+    SSL_CTX_load_verify_store( sslcontext, "org.openssl.winstore://" );
+    len = GetModuleFileNameA( 0, path, MAX_PATH );
+    if( ( len > 0 ) && ( len < MAX_PATH ) )
+    {
+      path[len] = 0;
+      sep = strrchr( path, '\\' );
+      if( sep )
+      {
+        strcpy( sep + 1, "cacert.pem" );
+        if( GetFileAttributesA( path ) != INVALID_FILE_ATTRIBUTES )
+          SSL_CTX_load_verify_locations( sslcontext, path, 0 );
+      }
+    }
+  }
+#endif
+  /* A source that is missing leaves an error on the queue; it must not be read as a later handshake's error */
+  ERR_clear_error();
+  return;
+}
+
+const char *tcpGetClearSslVerifyError( tcpContext *context )
+{
+  long code;
+  code = context->sslverifyerror;
+  if( !( code ) )
+    return 0;
+  context->sslverifyerror = 0;
+  return X509_verify_cert_error_string( code );
+}
+
+#else
+
+const char *tcpGetClearSslVerifyError( tcpContext *context )
+{
+  return 0;
+}
+
+#endif
+
+
 int tcpInit( tcpContext *context, int threadflag, int sslsupportflag )
 {
   DEBUG_SET_TRACKER();
@@ -493,17 +579,22 @@ int tcpInit( tcpContext *context, int threadflag, int sslsupportflag )
   }
 #if TCP_ENABLE_SSL_SUPPORT
   context->sslcontext = 0;
+  context->sslverifyerror = 0;
   if( sslsupportflag )
   {
-    SSL_load_error_strings();
-    SSL_library_init();
-    context->sslcontext = SSL_CTX_new( SSLv23_client_method() );
+    /* No openssl.cnf is read: BrickSync needs none, and a planted one could weaken TLS */
+    OPENSSL_init_ssl( OPENSSL_INIT_NO_LOAD_CONFIG, 0 );
+    context->sslcontext = SSL_CTX_new( TLS_client_method() );
     if( !( context->sslcontext ) )
     {
       TCP_ERROR();
       tcpEnd( context );
       return 0;
     }
+    SSL_CTX_set_min_proto_version( context->sslcontext, TLS1_2_VERSION );
+    /* Authenticate every server: the handshake fails unless the certificate chains to a trusted root */
+    SSL_CTX_set_verify( context->sslcontext, SSL_VERIFY_PEER, 0 );
+    tcpSslLoadTrustedRoots( context->sslcontext );
   }
 #endif
 #if CC_UNIX
@@ -734,6 +825,15 @@ static tcpBuffer *tcpAddRecvBuffer( tcpContext *context, tcpLink *link )
 
 tcpLink *tcpConnect( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag )
 {
+  return tcpConnectSSLHost( context, address, port, uservalue, netio, sslflag, 0 );
+}
+
+
+/* The address is usually an already resolved IP; sslhostname is the server name the TLS handshake
+ * must announce (SNI). Edges that host many names on one IP, such as Cloudflare in front of
+ * api.brickowl.com, refuse a handshake that names no server, so every HTTPS link must pass it. */
+tcpLink *tcpConnectSSLHost( tcpContext *context, char *address, int port, void *uservalue, tcpCallbackSet *netio, int sslflag, const char *sslhostname )
+{
   int sockflag;
   in_addr_t ip;
   tcpLink *link;
@@ -836,6 +936,14 @@ tcpLink *tcpConnect( tcpContext *context, char *address, int port, void *userval
     if( !( link->sslconnection ) )
       goto error;
     SSL_set_fd( link->sslconnection, link->socket );
+    /* The server is checked against the name we meant to reach, never just "any valid certificate";
+       without a name there is nothing to check, so no connection */
+    if( !( sslhostname ) )
+      goto error;
+    SSL_set_tlsext_host_name( link->sslconnection, sslhostname );
+    SSL_set_hostflags( link->sslconnection, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS );
+    if( SSL_set1_host( link->sslconnection, sslhostname ) != 1 )
+      goto error;
     link->flags |= TCPLINK_FLAGS_SSL_NEEDCONNECT;
   }
 #endif
@@ -1430,9 +1538,10 @@ TCP_DEBUG_PRINTF( "%%%%%%%%%%%%%%%%%% SEND %%%%%%%%%%%%%%%%%%%%\n" );
 
 #if TCP_ENABLE_SSL_SUPPORT
 
-static int tcpSslHandshake( tcpLink *link )
+static int tcpSslHandshake( tcpContext *context, tcpLink *link )
 {
   int sslcode, eventflag;
+  long verifycode;
 
   DEBUG_SET_TRACKER();
 
@@ -1462,6 +1571,13 @@ static int tcpSslHandshake( tcpLink *link )
         link->flags |= TCPLINK_FLAGS_WANT_SEND;
         break;
       default:
+        verifycode = SSL_get_verify_result( link->sslconnection );
+        if( verifycode != X509_V_OK )
+        {
+          context->sslverifyerror = verifycode;
+          TCP_DEBUG_PRINTF( "TCP: server certificate check failed: %s\n", X509_verify_cert_error_string( verifycode ) );
+        }
+        ERR_clear_error();
 #if TCP_DEBUG_PRINT_ERRORS
         TCP_DEBUG_PRINTF( "TCP: SSL_connect ERROR: %s\n", ERR_error_string( sslcode, 0 ) );
         TCP_ERROR();
@@ -1633,7 +1749,7 @@ static int tcpProcess( tcpContext *context, int64_t maxtimeout )
       if( FD_ISSET( link->socket, &fdRead ) || FD_ISSET( link->socket, &fdWrite ) || FD_ISSET( link->socket, &fdError ) )
       {
         link->time = curtime;
-        eventflag |= tcpSslHandshake( link );
+        eventflag |= tcpSslHandshake( context, link );
         continue;
       }
       goto timeoutcheck;

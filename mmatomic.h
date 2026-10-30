@@ -41,9 +41,14 @@
 #if ( __SSE2__ || _M_X64 || _M_IX86_FP >= 2 )
  #define MMATOMIC_CAP_SSE2 (1)
 #endif
+/* Any other CPU (ARM64: Apple Silicon): the compiler's __atomic builtins instead of x86 assembly */
+#if !defined(MMATOMIC_POINTER_BITS) && defined(__GNUC__) && defined(__ATOMIC_SEQ_CST) && defined(__SIZEOF_POINTER__)
+ #define MMATOMIC_ARCH_BUILTIN (1)
+ #define MMATOMIC_POINTER_BITS (__SIZEOF_POINTER__*8)
+#endif
 
 
-#if ( defined(MMATOMIC_ARCH_IA32) || defined(MMATOMIC_ARCH_AMD64) ) && defined(__GNUC__) && !defined(MM_ATOMIC_SUPPORT)
+#if ( defined(MMATOMIC_ARCH_IA32) || defined(MMATOMIC_ARCH_AMD64) || defined(MMATOMIC_ARCH_BUILTIN) ) && defined(__GNUC__) && !defined(MM_ATOMIC_SUPPORT)
 
 
 
@@ -51,7 +56,7 @@
 #define MM_ATOMIC_SUPPORT (1)
 
 
-#ifdef MMATOMIC_ARCH_AMD64
+#if defined(MMATOMIC_ARCH_AMD64) || ( defined(MMATOMIC_ARCH_BUILTIN) && ( MMATOMIC_POINTER_BITS >= 64 ) )
  #define MM_ATOMIC_64_BITS_SUPPORT
 #endif
 
@@ -62,6 +67,9 @@ typedef struct { volatile int32_t value; } mmAtomic32;
 #ifdef MM_ATOMIC_64_BITS_SUPPORT
 typedef struct { volatile int64_t value; } mmAtomic64;
 #endif
+
+
+#if !defined(MMATOMIC_ARCH_BUILTIN)
 
 
 ////
@@ -273,7 +281,7 @@ static inline void mmAtomicAdd8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; addb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicAdd16( mmAtomic16 *v, int16_t i )
@@ -311,7 +319,7 @@ static inline void mmAtomicSub8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; subb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicSub16( mmAtomic16 *v, int16_t i )
@@ -350,7 +358,7 @@ static inline int mmAtomicAddTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; addb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -396,7 +404,7 @@ static inline int mmAtomicSubTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; subb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -610,7 +618,7 @@ static inline int mmAtomicAddTestNegative8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; addb %2,%0 ; sets %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -656,7 +664,7 @@ static inline int mmAtomicSubTestNegative8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; subb %2,%0 ; sets %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -703,7 +711,7 @@ static inline void mmAtomicAnd8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; andb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicAnd16( mmAtomic16 *v, int16_t i )
@@ -742,7 +750,7 @@ static inline int mmAtomicAndTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; andb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -787,7 +795,7 @@ static inline void mmAtomicOr8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; orb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicOr16( mmAtomic16 *v, int16_t i )
@@ -826,7 +834,7 @@ static inline int mmAtomicOrTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; orb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -871,7 +879,7 @@ static inline void mmAtomicXor8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; xorb %1,%0"
     :"=m"(v->value)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
 }
 
 static inline void mmAtomicXor16( mmAtomic16 *v, int16_t i )
@@ -910,7 +918,7 @@ static inline int mmAtomicXorTestZero8( mmAtomic8 *v, int8_t i )
   __asm__ __volatile__(
     "lock ; xorb %2,%0 ; setz %1"
     :"=m"(v->value), "=qm"(c)
-    :"ir"(i), "m"(v->value) :"memory" );
+    :"iq"(i), "m"(v->value) :"memory" );
   return c;
 }
 
@@ -1000,7 +1008,7 @@ static inline int8_t mmAtomicCmpXchg8( mmAtomic8 *v, int8_t old, int8_t new )
   __asm__ __volatile__(
     "lock ; cmpxchgb %1,%2"
     :"=a"(prev)
-    :"r"(new), "m"(v->value), "a"(old) :"memory" );
+    :"q"(new), "m"(v->value), "a"(old) :"memory" );
   return prev;
 }
 
@@ -1065,7 +1073,7 @@ static inline void mmAtomicSpinWaitEq8( mmAtomic8 *v, int8_t i )
     ".p2align 4\n"
     "3:\n"
     :
-    :"m"(v->value), "r"(i) :"memory" );
+    :"m"(v->value), "q"(i) :"memory" );
   return;
 }
 
@@ -1141,7 +1149,7 @@ static inline int32_t mmAtomicSpinWaitEq8Count( mmAtomic8 *v, int8_t i, int32_t 
     ".p2align 4\n"
     "3:\n"
     :"=q"(spinmaxcount)
-    :"m"(v->value), "r"(i), "0"(spinmaxcount) :"memory" );
+    :"m"(v->value), "q"(i), "0"(spinmaxcount) :"memory" );
   return spinmaxcount;
 }
 
@@ -1221,7 +1229,7 @@ static inline void mmAtomicSpinWaitNeq8( mmAtomic8 *v, int8_t i )
     ".p2align 4\n"
     "3:\n"
     :
-    :"m"(v->value), "r"(i) :"memory" );
+    :"m"(v->value), "q"(i) :"memory" );
   return;
 }
 
@@ -1297,7 +1305,7 @@ static inline int32_t mmAtomicSpinWaitNeq8Count( mmAtomic8 *v, int8_t i, int32_t
     ".p2align 4\n"
     "3:\n"
     :"=q"(spinmaxcount)
-    :"m"(v->value), "r"(i), "0"(spinmaxcount) :"memory" );
+    :"m"(v->value), "q"(i), "0"(spinmaxcount) :"memory" );
   return spinmaxcount;
 }
 
@@ -1362,6 +1370,193 @@ static inline int32_t mmAtomicSpinWaitNeq64Count( mmAtomic64 *v, int64_t i, int3
   return spinmaxcount;
 }
 #endif
+
+#else /* MMATOMIC_ARCH_BUILTIN */
+
+
+/*
+Portable version of the x86 primitives above, for CPUs without them (ARM64).
+x86 keeps loads and stores in order, and the code using these was written for that; ARM does not.
+So every operation here is sequentially consistent and every barrier is a full fence: the order the
+x86 code relies on holds, at a cost too small to matter for BrickSync (it waits on the network).
+Same names, arguments and return values as the x86 versions; atomictest.c checks both.
+*/
+
+static inline void mmBarrier()
+{
+  __atomic_thread_fence( __ATOMIC_SEQ_CST );
+  return;
+}
+
+static inline void mmReadBarrier()
+{
+  __atomic_thread_fence( __ATOMIC_SEQ_CST );
+  return;
+}
+
+static inline void mmWriteBarrier()
+{
+  __atomic_thread_fence( __ATOMIC_SEQ_CST );
+  return;
+}
+
+static inline void mmFullBarrier()
+{
+  __atomic_thread_fence( __ATOMIC_SEQ_CST );
+  return;
+}
+
+/* Direct access to the atomic variables, for use when the caller knows no atomicity is needed */
+#define MM_ATOMIC_ACCESS_8(v) ((v)->value)
+#define MM_ATOMIC_ACCESS_16(v) ((v)->value)
+#define MM_ATOMIC_ACCESS_32(v) ((v)->value)
+#ifdef MM_ATOMIC_64_BITS_SUPPORT
+ #define MM_ATOMIC_ACCESS_64(v) ((v)->value)
+#endif
+
+/* A spin-wait hint to the CPU */
+static inline void mmAtomicPause()
+{
+#if defined(__aarch64__) || defined(__arm__)
+  __asm__ __volatile__( "yield":::"memory" );
+#else
+  __atomic_signal_fence( __ATOMIC_SEQ_CST );
+#endif
+  return;
+}
+
+#define MMATOMIC_SC __ATOMIC_SEQ_CST
+
+#define MMATOMIC_BUILTIN_DEFINE(N,T) \
+static inline T mmAtomicRead##N( mmAtomic##N *v ) \
+{ \
+  return __atomic_load_n( &v->value, MMATOMIC_SC ); \
+} \
+static inline void mmAtomicWrite##N( mmAtomic##N *v, T i ) \
+{ \
+  __atomic_store_n( &v->value, i, MMATOMIC_SC ); \
+} \
+static inline void mmAtomicBarrierWrite##N( mmAtomic##N *v, T i ) \
+{ \
+  (void)__atomic_exchange_n( &v->value, i, MMATOMIC_SC ); \
+} \
+static inline void mmAtomicAdd##N( mmAtomic##N *v, T i ) \
+{ \
+  (void)__atomic_fetch_add( &v->value, i, MMATOMIC_SC ); \
+} \
+static inline void mmAtomicSub##N( mmAtomic##N *v, T i ) \
+{ \
+  (void)__atomic_fetch_sub( &v->value, i, MMATOMIC_SC ); \
+} \
+static inline int mmAtomicAddTestZero##N( mmAtomic##N *v, T i ) \
+{ \
+  return ( (T)__atomic_add_fetch( &v->value, i, MMATOMIC_SC ) == 0 ); \
+} \
+static inline int mmAtomicSubTestZero##N( mmAtomic##N *v, T i ) \
+{ \
+  return ( (T)__atomic_sub_fetch( &v->value, i, MMATOMIC_SC ) == 0 ); \
+} \
+static inline void mmAtomicInc##N( mmAtomic##N *v ) \
+{ \
+  (void)__atomic_fetch_add( &v->value, 1, MMATOMIC_SC ); \
+} \
+static inline void mmAtomicDec##N( mmAtomic##N *v ) \
+{ \
+  (void)__atomic_fetch_sub( &v->value, 1, MMATOMIC_SC ); \
+} \
+static inline int mmAtomicIncTestZero##N( mmAtomic##N *v ) \
+{ \
+  return ( (T)__atomic_add_fetch( &v->value, 1, MMATOMIC_SC ) == 0 ); \
+} \
+static inline int mmAtomicDecTestZero##N( mmAtomic##N *v ) \
+{ \
+  return ( (T)__atomic_sub_fetch( &v->value, 1, MMATOMIC_SC ) == 0 ); \
+} \
+static inline int mmAtomicAddTestNegative##N( mmAtomic##N *v, T i ) \
+{ \
+  return ( (T)__atomic_add_fetch( &v->value, i, MMATOMIC_SC ) < 0 ); \
+} \
+static inline int mmAtomicSubTestNegative##N( mmAtomic##N *v, T i ) \
+{ \
+  return ( (T)__atomic_sub_fetch( &v->value, i, MMATOMIC_SC ) < 0 ); \
+} \
+static inline void mmAtomicAnd##N( mmAtomic##N *v, T i ) \
+{ \
+  (void)__atomic_fetch_and( &v->value, i, MMATOMIC_SC ); \
+} \
+static inline int mmAtomicAndTestZero##N( mmAtomic##N *v, T i ) \
+{ \
+  return ( (T)__atomic_and_fetch( &v->value, i, MMATOMIC_SC ) == 0 ); \
+} \
+static inline void mmAtomicOr##N( mmAtomic##N *v, T i ) \
+{ \
+  (void)__atomic_fetch_or( &v->value, i, MMATOMIC_SC ); \
+} \
+static inline int mmAtomicOrTestZero##N( mmAtomic##N *v, T i ) \
+{ \
+  return ( (T)__atomic_or_fetch( &v->value, i, MMATOMIC_SC ) == 0 ); \
+} \
+static inline void mmAtomicXor##N( mmAtomic##N *v, T i ) \
+{ \
+  (void)__atomic_fetch_xor( &v->value, i, MMATOMIC_SC ); \
+} \
+static inline int mmAtomicXorTestZero##N( mmAtomic##N *v, T i ) \
+{ \
+  return ( (T)__atomic_xor_fetch( &v->value, i, MMATOMIC_SC ) == 0 ); \
+} \
+static inline T mmAtomicXchg##N( mmAtomic##N *v, T i ) \
+{ \
+  return __atomic_exchange_n( &v->value, i, MMATOMIC_SC ); \
+} \
+/* Returns the value found: equal to old when the swap happened */ \
+static inline T mmAtomicCmpXchg##N( mmAtomic##N *v, T old, T new ) \
+{ \
+  T expected; \
+  expected = old; \
+  __atomic_compare_exchange_n( &v->value, &expected, new, 0, MMATOMIC_SC, MMATOMIC_SC ); \
+  return expected; \
+} \
+static inline void mmAtomicSpinWaitEq##N( mmAtomic##N *v, T i ) \
+{ \
+  for( ; mmAtomicRead##N( v ) != i ; ) \
+    mmAtomicPause(); \
+} \
+/* Returns the spins left, 0 when it gave up */ \
+static inline int32_t mmAtomicSpinWaitEq##N##Count( mmAtomic##N *v, T i, int32_t spinmaxcount ) \
+{ \
+  for( ; mmAtomicRead##N( v ) != i ; ) \
+  { \
+    if( !( --spinmaxcount ) ) \
+      return 0; \
+    mmAtomicPause(); \
+  } \
+  return spinmaxcount; \
+} \
+static inline void mmAtomicSpinWaitNeq##N( mmAtomic##N *v, T i ) \
+{ \
+  for( ; mmAtomicRead##N( v ) == i ; ) \
+    mmAtomicPause(); \
+} \
+static inline int32_t mmAtomicSpinWaitNeq##N##Count( mmAtomic##N *v, T i, int32_t spinmaxcount ) \
+{ \
+  for( ; mmAtomicRead##N( v ) == i ; ) \
+  { \
+    if( !( --spinmaxcount ) ) \
+      return 0; \
+    mmAtomicPause(); \
+  } \
+  return spinmaxcount; \
+}
+
+MMATOMIC_BUILTIN_DEFINE(8,int8_t)
+MMATOMIC_BUILTIN_DEFINE(16,int16_t)
+MMATOMIC_BUILTIN_DEFINE(32,int32_t)
+#ifdef MM_ATOMIC_64_BITS_SUPPORT
+MMATOMIC_BUILTIN_DEFINE(64,int64_t)
+#endif
+
+
+#endif /* MMATOMIC_ARCH_BUILTIN */
 
 
 ////

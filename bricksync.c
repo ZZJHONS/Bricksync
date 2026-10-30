@@ -75,6 +75,7 @@
 
 #include "bricksync.h"
 #include "bsantidebug.h"
+#include "bsstop.h"
 
 
 ////
@@ -149,6 +150,15 @@ void bsFatalError( bsContext *context )
   output = 0;
   if( context )
     output = &context->output;
+  if( bsStopRequested() )
+  {
+    /* A stop request makes the operation in progress fail on purpose (during start-up that ends
+       here); no "Press Enter" wait, nobody may be at the console */
+    ioPrintf( output, IO_MODEBIT_FLUSH, BSMSG_INFO "Stop requested (%s), the operation in progress did not finish. Exiting now.\n" IO_DEFAULT, bsStopSourceName() );
+    ioLogEnd( output );
+    bsStopFinished();
+    exit( 1 );
+  }
   ioPrintf( output, IO_MODEBIT_FLUSH, BSMSG_ERROR IO_RED "Fatal error encountered." IO_DEFAULT "\n" );
   ioPrintf( output, IO_MODEBIT_FLUSH, BSMSG_ERROR IO_RED "Exiting now." IO_DEFAULT "\n" );
   ioLogEnd( output );
@@ -265,6 +275,11 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
   context->messagetime = 0;
   context->message = 0;
   context->lastmessagetimestamp = 0;
+  context->latestreleasetag[0] = 0;
+  context->bricksyncwebaddress = 0;
+  context->bricksyncwebhttp = 0;
+  context->githubapiaddress = 0;
+  context->githubapihttp = 0;
   context->diskspacechecktime = 0;
   context->findordertime = 7 * (24*60*60);
 #if BS_ENABLE_MATHPUZZLE
@@ -409,37 +424,22 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
   context->bricklink.apiaddress = strdup( "54.209.53.59" );
   context->bricklink.webaddress = strdup( "54.208.56.110" );
   context->brickowl.apiaddress = strdup( "178.33.122.183" );
-  context->bricksyncwebaddress = strdup( "199.58.80.33" );
+  context->bricksyncwebaddress = 0;
 #else
-  ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INIT "Resolving IP addresses for API and WEB services.\n" );
-  context->bricklink.apiaddress = tcpResolveName( BS_BRICKLINK_API_SERVER, 0 );
-  if( !( context->bricklink.apiaddress ) )
-  {
-    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKLINK_API_SERVER );
+  if( !( bsResolveServiceAddresses( context ) ) )
     goto error;
-  }
-  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKLINK_API_SERVER, context->bricklink.apiaddress );
-  context->bricklink.webaddress = tcpResolveName( BS_BRICKLINK_WEB_SERVER, 0 );
-  if( !( context->bricklink.webaddress ) )
-  {
-    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKLINK_WEB_SERVER );
-    goto error;
-  }
-  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKLINK_WEB_SERVER, context->bricklink.webaddress );
-  context->brickowl.apiaddress = tcpResolveName( BS_BRICKOWL_API_SERVER, 0 );
-  if( !( context->brickowl.apiaddress ) )
-  {
-    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKOWL_API_SERVER );
-    goto error;
-  }
-  ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKOWL_API_SERVER, context->brickowl.apiaddress );
   if( context->checkmessageflag )
   {
-    context->bricksyncwebaddress = tcpResolveName( BS_BRICKSYNC_WEB_SERVER, 0 );
-    if( !( context->bricksyncwebaddress ) )
-      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_BRICKSYNC_WEB_SERVER );
+    context->githubapiaddress = tcpResolveName( BS_GITHUB_API_SERVER, 0 );
+    if( !( context->githubapiaddress ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_GITHUB_API_SERVER );
     else
-      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_BRICKSYNC_WEB_SERVER, context->bricksyncwebaddress );
+      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_GITHUB_API_SERVER, context->githubapiaddress );
+    context->bricksyncwebaddress = tcpResolveName( BS_GITHUB_RAW_SERVER, 0 );
+    if( !( context->bricksyncwebaddress ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "Failed to resolve IP address for " IO_RED "%s" IO_WHITE ".\n", BS_GITHUB_RAW_SERVER );
+    else
+      ioPrintf( &context->output, IO_MODEBIT_LOGONLY, "LOG: Resolved %s as %s\n", BS_GITHUB_RAW_SERVER, context->bricksyncwebaddress );
   }
 #endif
 
@@ -453,14 +453,17 @@ bsContext *bsInit( char *statepath, int *retstateloaded )
   context->inventory = bsxNewInventory();
 
   /* Define HTTP connections to BrickLink and BrickOwl */
-  context->bricklink.http = httpOpen( &context->tcp, context->bricklink.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
-  context->bricklink.webhttp = httpOpen( &context->tcp, context->bricklink.webaddress, 80, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING );
-  context->brickowl.http = httpOpen( &context->tcp, context->brickowl.apiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+  bsOpenServiceConnections( context );
   if( ( context->checkmessageflag ) && ( context->bricksyncwebaddress ) )
-    context->bricksyncwebhttp = httpOpen( &context->tcp, context->bricksyncwebaddress, 80, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING );
-
-  /* Increase BrickOwl timeout due to absurd times required to download inventory */
-  httpSetTimeout( context->brickowl.http, 120*1000, 120*1000 );
+  {
+    context->bricksyncwebhttp = httpOpen( &context->tcp, context->bricksyncwebaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+    httpSetSSLHostName( context->bricksyncwebhttp, BS_GITHUB_RAW_SERVER );
+  }
+  if( ( context->checkmessageflag ) && ( context->githubapiaddress ) )
+  {
+    context->githubapihttp = httpOpen( &context->tcp, context->githubapiaddress, 443, HTTP_CONNECTION_FLAGS_KEEPALIVE | HTTP_CONNECTION_FLAGS_PIPELINING | HTTP_CONNECTION_FLAGS_SSL );
+    httpSetSSLHostName( context->githubapihttp, BS_GITHUB_API_SERVER );
+  }
 
   /* Determine next synchronization times */
   context->curtime = time( 0 );
@@ -1032,6 +1035,7 @@ int main( int argc, char **argv )
 #if CC_WINDOWS
   windowsInitConsole();
 #endif
+  bsStopInit();
 
   mmInit();
   cpuGetInfo( &cpuinfo );
@@ -1298,7 +1302,7 @@ int main( int argc, char **argv )
     ioPrintf( &context->output, 0, "\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "As this appears to be your first time running BrickSync, " IO_RED "please read the Frequently Asked Questions" IO_DEFAULT ".\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "Before you add or edit any inventory, read especially the questions " IO_YELLOW "#2" IO_DEFAULT " and " IO_YELLOW "#3" IO_DEFAULT ":\n" );
-    ioPrintf( &context->output, 0, BSMSG_INFO IO_RED "http://www.bricksync.net/guidefaq.html\n" );
+    ioPrintf( &context->output, 0, BSMSG_INFO IO_RED BS_FAQ_URL "\n" );
     ioPrintf( &context->output, 0, BSMSG_INFO "Thank you.\n" );
   }
 
@@ -1387,6 +1391,20 @@ int main( int argc, char **argv )
     /* Flush buffered I/O on log file */
     ioLogFlush( &context->output );
 
+    /* SIGINT/SIGTERM or a console event: leave like "quit", the state above is saved */
+    if( bsStopRequested() )
+    {
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_INFO "Stop requested (%s). Exiting.\n", bsStopSourceName() );
+#if BS_ENABLE_ANTIDEBUG
+      statusflag = 1;
+#endif
+      break;
+    }
+
+    /* Too many connection errors earlier: resolve again and reopen, now that no query is in flight */
+    if( context->reconnectflag )
+      bsReconnectServices( context );
+
 #if BS_ENABLE_ANTIDEBUG
     bsAntiDebugCountInv( context, __LINE__ & 0xf );
 #endif
@@ -1425,7 +1443,7 @@ int main( int argc, char **argv )
         if( context->curtime >= context->brickowl.checktime )
         {
           context->stateflags |= BS_STATE_FLAGS_BRICKOWL_MUST_CHECK;
-          context->bricklink.checktime = context->curtime + context->bricklink.failinterval;
+          context->brickowl.checktime = context->curtime + context->brickowl.failinterval;
         }
       }
 
@@ -1618,7 +1636,7 @@ int main( int argc, char **argv )
           context->brickowl.lastsynctime = context->curtime;
         }
 
-      } while( workloop );
+      } while( ( workloop ) && !( bsStopRequested() ) );
 
 #if BS_ENABLE_ANTIDEBUG
       /* Initialize some anti-debugging stuff */
@@ -1679,6 +1697,15 @@ int main( int argc, char **argv )
   httpClose( context->bricklink.http );
   httpClose( context->bricklink.webhttp );
   httpClose( context->brickowl.http );
+  if( context->bricksyncwebhttp )
+    httpClose( context->bricksyncwebhttp );
+  if( context->githubapihttp )
+    httpClose( context->githubapihttp );
+  free( context->bricklink.apiaddress );
+  free( context->bricklink.webaddress );
+  free( context->brickowl.apiaddress );
+  free( context->bricksyncwebaddress );
+  free( context->githubapiaddress );
 
 #if BS_ENABLE_ANTIDEBUG
   if( !( statusflag ) )
@@ -1689,6 +1716,7 @@ int main( int argc, char **argv )
   ioLogEnd( &context->output );
   tcpEnd( &context->tcp );
   exclPermStop( exclperm, BS_LOCK_FILE );
+  bsStopFinished();
 
   return 1;
 }

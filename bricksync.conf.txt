@@ -47,7 +47,8 @@ retainemptylots = 0;
 // Set to non-zero to reuse existing and empty BrickOwl lots with matching external_id/LotIDs
 brickowl.reuseempty = 0;
 
-// Set to zero if you don't want to check for new versions of BrickSync or any broadcast message
+// Set to zero if you don't want to check for new versions of BrickSync or any broadcast message.
+// When on, BrickSync asks GitHub (api.github.com and raw.githubusercontent.com, HTTPS) at start and every 3 hours
 checkmessage = 1;
 
 // Maximum count of HTTP queries maintained "in flight" over a same socket
