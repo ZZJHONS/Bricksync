@@ -39,6 +39,7 @@
 #include "iolog.h"
 #include "debugtrack.h"
 #include "rand.h"
+#include "xml.h"
 
 #if CC_UNIX
  #include <sys/types.h>
