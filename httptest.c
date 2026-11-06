@@ -96,6 +96,47 @@ static void testBackoffReply( void )
 }
 
 
+static void testMaintenanceRedirect( void )
+{
+  httpConnection *http;
+  httpResponse response;
+  int retval;
+
+  printf( "-- A redirect to the maintenance page is an outage\n" );
+  check( httpIsMaintenanceRedirect( 302, "https://maintenance.bricklink.com:443/recovery.html" ), "BrickLink's 302 (2026-11-05)" );
+  check( httpIsMaintenanceRedirect( 301, " HTTP://Maintenance.example.com/" ), "any 3xx, any case, leading space" );
+  check( httpIsMaintenanceRedirect( 307, "maintenance.bricklink.com/x" ), "no scheme" );
+  check( !( httpIsMaintenanceRedirect( 302, "https://www.bricklink.com/v2/login.page" ) ), "a sign-in redirect is not" );
+  check( !( httpIsMaintenanceRedirect( 302, "https://www.bricklink.com/maintenance.html" ) ), "maintenance in the path is not" );
+  check( !( httpIsMaintenanceRedirect( 302, "https://maintenancex/" ) ), "host must start with maintenance." );
+  check( !( httpIsMaintenanceRedirect( 302, 0 ) ), "no Location" );
+  check( !( httpIsMaintenanceRedirect( 200, "https://maintenance.bricklink.com/" ) ), "a 200 is not" );
+  check( !( httpIsMaintenanceRedirect( 503, "https://maintenance.bricklink.com/" ) ), "only 3xx (503 has its own rule)" );
+
+  /* The header exactly as BrickLink sent it */
+  {
+    static char header[] = "HTTP/1.1 302 Moved Temporarily\r\nServer: awselb/2.0\r\nDate: Thu, 05 Nov 2026 19:05:31 GMT\r\nContent-Type: text/html\r\nContent-Length: 110\r\nConnection: keep-alive\r\nLocation: https://maintenance.bricklink.com:443/recovery.html\r\n\r\n";
+    memset( &response, 0, sizeof(httpResponse) );
+    retval = httpParseResponseHeader( &response, header, strlen( header ) );
+    checkint( retval, 1, "BrickLink 302 header parsed" );
+    checkint( response.httpcode, 302, "302 code" );
+    check( httpIsMaintenanceRedirect( response.httpcode, response.location ), "parsed Location is the maintenance page" );
+  }
+
+  http = httpOpen( 0, "127.0.0.1", 443, 0 );
+  httpNoteReplyCode( http, 302, -1, "https://maintenance.bricklink.com:443/recovery.html", 2000 );
+  checkint( httpGetBackoffCount( http ), 1, "maintenance 302: back-off episode 1" );
+  checkint( (int)httpGetBackoffUntil( http ), 2010, "maintenance 302: wait 10 s" );
+  checkint( httpGetBackoffCode( http ), 302, "maintenance 302: code kept" );
+  httpNoteReplyCode( http, 302, -1, "https://maintenance.bricklink.com:443/recovery.html", 2015 );
+  checkint( httpGetBackoffCount( http ), 2, "still in maintenance: episode 2" );
+  httpNoteReplyCode( http, 302, -1, "https://www.bricklink.com/v2/login.page", 2040 );
+  checkint( httpGetBackoffCount( http ), 0, "another redirect ends the run" );
+  httpClose( http );
+  return;
+}
+
+
 static void testDelay( void )
 {
   printf( "-- How long to wait\n" );
@@ -123,39 +164,39 @@ static void testEpisodes( void )
   checkint( (int)httpGetBackoffUntil( http ), 0, "new connection: no back-off" );
   checkint( httpGetBackoffCount( http ), 0, "new connection: no episode" );
 
-  httpNoteReplyCode( http, 200, -1, 1000 );
+  httpNoteReplyCode( http, 200, -1, 0, 1000 );
   checkint( (int)httpGetBackoffUntil( http ), 0, "success: still none" );
 
-  httpNoteReplyCode( http, 503, -1, 1000 );
+  httpNoteReplyCode( http, 503, -1, 0, 1000 );
   checkint( (int)httpGetBackoffUntil( http ), 1010, "503: wait 10 s" );
   checkint( httpGetBackoffCount( http ), 1, "503: episode 1" );
   checkint( httpGetBackoffCode( http ), 503, "503: code kept" );
 
-  httpNoteReplyCode( http, 503, -1, 1001 );
-  httpNoteReplyCode( http, 503, -1, 1002 );
+  httpNoteReplyCode( http, 503, -1, 0, 1001 );
+  httpNoteReplyCode( http, 503, -1, 0, 1002 );
   checkint( (int)httpGetBackoffUntil( http ), 1010, "more 503 in the same batch: same wait" );
   checkint( httpGetBackoffCount( http ), 1, "more 503 in the same batch: same episode" );
 
-  httpNoteReplyCode( http, 429, 30, 1003 );
+  httpNoteReplyCode( http, 429, 30, 0, 1003 );
   checkint( (int)httpGetBackoffUntil( http ), 1033, "a longer Retry-After in the episode extends the wait" );
-  httpNoteReplyCode( http, 429, 2, 1004 );
+  httpNoteReplyCode( http, 429, 2, 0, 1004 );
   checkint( (int)httpGetBackoffUntil( http ), 1033, "a shorter one does not shorten it" );
 
-  httpNoteReplyCode( http, 503, -1, 1040 );
+  httpNoteReplyCode( http, 503, -1, 0, 1040 );
   checkint( httpGetBackoffCount( http ), 2, "503 after the wait: episode 2" );
   checkint( (int)httpGetBackoffUntil( http ), 1060, "episode 2: wait 20 s" );
 
-  httpNoteReplyCode( http, 200, -1, 1061 );
+  httpNoteReplyCode( http, 200, -1, 0, 1061 );
   checkint( httpGetBackoffCount( http ), 0, "a success ends the run" );
 
-  httpNoteReplyCode( http, 503, -1, 1070 );
+  httpNoteReplyCode( http, 503, -1, 0, 1070 );
   checkint( httpGetBackoffCount( http ), 1, "next 503: episode 1 again" );
   checkint( (int)httpGetBackoffUntil( http ), 1080, "episode 1 again: wait 10 s" );
 
-  httpNoteReplyCode( http, 500, -1, 1090 );
+  httpNoteReplyCode( http, 500, -1, 0, 1090 );
   checkint( httpGetBackoffCount( http ), 0, "a bare 500 is not a back-off" );
 
-  httpNoteReplyCode( http, 429, 45, 1100 );
+  httpNoteReplyCode( http, 429, 45, 0, 1100 );
   checkint( (int)httpGetBackoffUntil( http ), 1145, "429 with Retry-After 45" );
   checkint( httpGetBackoffCode( http ), 429, "429: code kept" );
 
@@ -441,6 +482,7 @@ int main( void )
   setvbuf( stdout, 0, _IONBF, 0 );
   testRetryAfter();
   testBackoffReply();
+  testMaintenanceRedirect();
   testDelay();
   testEpisodes();
   testHeader();

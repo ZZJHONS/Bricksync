@@ -455,7 +455,7 @@ static void httpFinishFreeQuery( httpConnection *http, httpQuery *query )
     ((char *)query->response.body)[ query->response.bodysize ] = 0;
 #endif
     /* Before the callback: whoever handles the reply may ask how long to back off */
-    httpNoteReplyCode( http, query->response.httpcode, query->response.retryafter, time( 0 ) );
+    httpNoteReplyCode( http, query->response.httpcode, query->response.retryafter, query->response.location, time( 0 ) );
     query->querycallback( query->uservalue, HTTP_RESULT_SUCCESS, &query->response );
     /* Reset count of retry failures */
     http->retryfailurecount = 0;
@@ -1449,6 +1449,30 @@ int httpIsBackoffReply( int httpcode, int retryafter )
 }
 
 
+int httpIsMaintenanceRedirect( int httpcode, const char *location )
+{
+  static const char *prefix = "maintenance.";
+  const char *s;
+  int i;
+
+  if( ( httpcode < 300 ) || ( httpcode > 399 ) || !( location ) )
+    return 0;
+  s = location;
+  while( ( *s == ' ' ) || ( *s == '\t' ) )
+    s++;
+  /* Skip the scheme, if any: "https://" or "http://" (any case) */
+  for( i = 0 ; ( ( ( s[i] | 0x20 ) >= 'a' ) && ( ( s[i] | 0x20 ) <= 'z' ) ) ; i++ );
+  if( ( i > 0 ) && ( s[i] == ':' ) && ( s[i+1] == '/' ) && ( s[i+2] == '/' ) )
+    s += i + 3;
+  for( i = 0 ; prefix[i] ; i++ )
+  {
+    if( ( s[i] | 0x20 ) != prefix[i] )
+      return 0;
+  }
+  return 1;
+}
+
+
 static int httpRetryAfterMonth( const char *s )
 {
   static const char *months[12] = { "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec" };
@@ -1596,11 +1620,11 @@ int httpBackoffDelay( int episode, int retryafter )
 }
 
 
-void httpNoteReplyCode( httpConnection *http, int httpcode, int retryafter, time_t now )
+void httpNoteReplyCode( httpConnection *http, int httpcode, int retryafter, const char *location, time_t now )
 {
   time_t until;
 
-  if( !( httpIsBackoffReply( httpcode, retryafter ) ) )
+  if( !( httpIsBackoffReply( httpcode, retryafter ) ) && !( httpIsMaintenanceRedirect( httpcode, location ) ) )
   {
     /* Any other answer ends a run of back-offs; a wait already set still stands */
     http->backoffcount = 0;

@@ -153,14 +153,21 @@ void httpSetWakeCallback( httpConnection *http, void (*wake)( tcpContext *tcp, h
    with waits would hold up every other update behind it. */
 int httpIsBackoffReply( int httpcode, int retryafter );
 
+/* Is this reply a redirect to the service's maintenance page? A 3xx whose Location host starts
+   with "maintenance." (BrickLink: 302 to https://maintenance.bricklink.com/recovery.html).
+   The API never redirects otherwise, so this means "down for now": it is handled like a 503
+   (wait, try again, deep sync later), never as a rejection of the query. */
+int httpIsMaintenanceRedirect( int httpcode, const char *location );
+
 /* Retry-After value (delta-seconds or an HTTP date) as seconds from now, -1 if unreadable */
 int httpParseRetryAfter( const char *value, time_t now );
 
 /* Seconds to wait for the given episode (1 = first), retryafter -1 when the server gave none */
 int httpBackoffDelay( int episode, int retryafter );
 
-/* Record a reply's HTTP code: a back-off code starts or extends a back-off, any other ends the run */
-void httpNoteReplyCode( httpConnection *http, int httpcode, int retryafter, time_t now );
+/* Record a reply's HTTP code: a back-off code (or a maintenance redirect, location may be 0)
+   starts or extends a back-off, any other ends the run */
+void httpNoteReplyCode( httpConnection *http, int httpcode, int retryafter, const char *location, time_t now );
 
 time_t httpGetBackoffUntil( httpConnection *http );
 int httpGetBackoffCount( httpConnection *http );

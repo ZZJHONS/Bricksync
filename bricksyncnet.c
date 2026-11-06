@@ -327,6 +327,10 @@ int bsHttpErrorResult( httpResponse *response )
 {
   if( httpIsBackoffReply( response->httpcode, response->retryafter ) )
     return ( response->httpcode == 429 ? BS_HTTP_RESULT_RATELIMITED : BS_HTTP_RESULT_UNAVAILABLE );
+  /* Down for maintenance: not a rejection of this query. Before this, BrickLink's 302 to its
+     maintenance page made ApplyDiff drop the lot as "rejected", and no deep sync followed */
+  if( httpIsMaintenanceRedirect( response->httpcode, response->location ) )
+    return BS_HTTP_RESULT_UNAVAILABLE;
   return HTTP_RESULT_CODE_ERROR;
 }
 
@@ -366,13 +370,18 @@ static void bsTrackerBackoffWait( bsContext *context, bsTracker *tracker )
     return;
   if( httpGetBackoffCount( tracker->http ) > BS_TRACKER_BACKOFF_MAX_EPISODES )
   {
-    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "%s is still refusing queries (HTTP %d) after %d waits, giving up for now.\n", bsTrackerServiceName( context, tracker->http ), httpGetBackoffCode( tracker->http ), BS_TRACKER_BACKOFF_MAX_EPISODES );
+    if( ( httpGetBackoffCode( tracker->http ) >= 300 ) && ( httpGetBackoffCode( tracker->http ) <= 399 ) )
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "%s is still down for maintenance after %d waits, giving up for now; a deep sync will follow once it is back.\n", bsTrackerServiceName( context, tracker->http ), BS_TRACKER_BACKOFF_MAX_EPISODES );
+    else
+      ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_ERROR "%s is still refusing queries (HTTP %d) after %d waits, giving up for now.\n", bsTrackerServiceName( context, tracker->http ), httpGetBackoffCode( tracker->http ), BS_TRACKER_BACKOFF_MAX_EPISODES );
     httpAbortQueue( tracker->http );
     tracker->failureflag = 1;
     return;
   }
   seconds = (int)( until - now );
-  if( httpGetBackoffCode( tracker->http ) == 429 )
+  if( ( httpGetBackoffCode( tracker->http ) >= 300 ) && ( httpGetBackoffCode( tracker->http ) <= 399 ) )
+    ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "%s is down for maintenance (HTTP %d to its maintenance page), waiting " IO_CYAN "%d" IO_WHITE " seconds before trying again.\n", bsTrackerServiceName( context, tracker->http ), httpGetBackoffCode( tracker->http ), seconds );
+  else if( httpGetBackoffCode( tracker->http ) == 429 )
     ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "%s asks us to slow down (HTTP 429), waiting " IO_CYAN "%d" IO_WHITE " seconds before trying again.\n", bsTrackerServiceName( context, tracker->http ), seconds );
   else
     ioPrintf( &context->output, IO_MODEBIT_FLUSH, BSMSG_WARNING "%s is unavailable (HTTP %d), waiting " IO_CYAN "%d" IO_WHITE " seconds before trying again.\n", bsTrackerServiceName( context, tracker->http ), httpGetBackoffCode( tracker->http ), seconds );
