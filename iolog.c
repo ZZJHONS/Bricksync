@@ -35,6 +35,7 @@
 #include "ccstr.h"
 #include "mm.h"
 #include "iolog.h"
+#include "xml.h"
 
 /* For mkdir() */
 #if CC_UNIX
@@ -399,9 +400,33 @@ static void ioHandleColorCode( ioLog *log, int color )
   return;
 }
 
+/* Interpret escaped XML entities in the given string in-place */
+static void interpretXmlEntities( char *string )
+{
+  char *targetstring, *sourcestring, *decodedstring;
+
+  decodedstring = xmlDecodeEscapeString( string, strlen( string ), 0 );
+
+  targetstring = decodedstring;
+  sourcestring = string;
+  for ( ; *targetstring ; targetstring++ )
+  {
+    /* Replace the original string with decoded characters */
+    *sourcestring++ = *targetstring;
+  }
+  for ( ; *sourcestring ; sourcestring++ )
+  {
+    /* Set residual characters in the input string to \0 */
+    *sourcestring = 0;
+  }
+
+  free( decodedstring );
+}
 
 static void ioPrintStdoutString( ioLog *log, char *string )
 {
+  interpretXmlEntities( string );
+
   int writelength, colorcode, endlinecount;
   char *writebase;
 
@@ -445,6 +470,8 @@ static void ioPrintStdoutString( ioLog *log, char *string )
 
 static void ioPrintFileString( ioLog *log, FILE *file, char *string )
 {
+  interpretXmlEntities( string );
+
   int writelength;
   char *writebase;
 
