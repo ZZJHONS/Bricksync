@@ -147,8 +147,9 @@ static const tlsCase tlscases[] =
   { "www.bricklink.com", "www.bricklink.com", 1, 0 },
   { "api.github.com", "api.github.com", 1, 0 },
   { "raw.githubusercontent.com", "raw.githubusercontent.com", 1, 0 },
-  /* Brick Owl's address asked for as another site: the certificate does not name it */
-  { "api.brickowl.com", "www.example.com", 0, 1 },
+  /* BrickLink's address asked for as another site: the certificate does not name it.
+     (Not Brick Owl's: it sits on shared Cloudflare addresses again since 2026-11, and those
+     rightly answer with a valid certificate for any Cloudflare site - www.example.com included) */
   { "api.bricklink.com", "api.brickowl.com", 0, 1 },
   { "wrong.host.badssl.com", "wrong.host.badssl.com", 0, 1 },
   { "self-signed.badssl.com", "self-signed.badssl.com", 0, 1 },
